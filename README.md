@@ -466,3 +466,23 @@ AI-Driven Smart Hospital Queue Management and Waiting Time Prediction System Usi
 ## 📜 License
 
 This project is developed for academic and educational purposes.
+
+## Screenshots
+
+### Home Page
+![Home Page](screenshots/home.png)
+
+### Login Page
+![Login Page](screenshots/login.png)
+
+### Patient Dashboard
+![Patient Dashboard](screenshots/patient.png)
+
+### Doctor Dashboard
+![Doctor Dashboard](screenshots/doctor.png)
+
+### Appointment
+![Appointment](screenshots/appointment.png)
+
+### Lab Report
+![Lab Report](screenshots/labrepots.png)
