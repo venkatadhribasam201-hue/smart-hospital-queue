@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import API_BASE_URL from "../api";
 
 function Register() {
   const navigate = useNavigate();
@@ -53,7 +54,7 @@ function Register() {
         payload.consultation_fee = Number(formData.consultation_fee || 0);
       }
 
-      const response = await fetch("http://127.0.0.1:8000/auth/register", {
+      const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
