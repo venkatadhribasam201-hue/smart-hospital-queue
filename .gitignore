@@ -1,0 +1,25 @@
+# Python virtual environment
+backend/venv/
+
+# Environment variables and passwords
+backend/.env
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Node modules
+frontend/node_modules/
+
+# Build files
+frontend/dist/
+
+# ML generated files
+ml/__pycache__/
+
+# VS Code settings
+.vscode/
+
+# Operating system files
+.DS_Store
+Thumbs.db
