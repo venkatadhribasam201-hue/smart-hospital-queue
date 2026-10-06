@@ -11,3 +11,4 @@ python-multipart
 psycopg[binary]
 email-validator
 joblib
+pandas
