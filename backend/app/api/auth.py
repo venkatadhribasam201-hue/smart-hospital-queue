@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -64,6 +63,17 @@ def register_user(
             raise HTTPException(
                 status_code=400,
                 detail="Phone number already registered"
+            )
+
+        # Check password length before bcrypt hashing
+        password_bytes = len(
+            user_data.password.encode("utf-8")
+        )
+
+        if password_bytes > 72:
+            raise HTTPException(
+                status_code=400,
+                detail="Password must be 72 bytes or less"
             )
 
         # Hash password
