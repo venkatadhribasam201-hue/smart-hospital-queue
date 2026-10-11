@@ -5,7 +5,6 @@ from app.database.database import Base
 
 
 class Patient(Base):
-
     __tablename__ = "patients"
 
     id = Column(
@@ -19,6 +18,14 @@ class Patient(Base):
         ForeignKey("users.id"),
         unique=True,
         nullable=False
+    )
+
+    # Link patient to a hospital
+    hospital_id = Column(
+        Integer,
+        ForeignKey("hospitals.id"),
+        nullable=True,
+        index=True
     )
 
     date_of_birth = Column(
@@ -47,9 +54,14 @@ class Patient(Base):
     )
 
     user = relationship(
-    "User",
-    back_populates="patient"
-)
+        "User",
+        back_populates="patient"
+    )
+
+    hospital = relationship(
+        "Hospital",
+        back_populates="patients"
+    )
 
     appointments = relationship(
         "Appointment",
@@ -57,11 +69,11 @@ class Patient(Base):
     )
 
     queue_tokens = relationship(
-    "QueueToken",
-    back_populates="patient"
-)
+        "QueueToken",
+        back_populates="patient"
+    )
 
     vitals = relationship(
-    "Vital",
-    back_populates="patient"
-)
+        "Vital",
+        back_populates="patient"
+    )

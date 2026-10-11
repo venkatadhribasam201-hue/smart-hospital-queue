@@ -1,3 +1,4 @@
+
 from sqlalchemy import Column, Integer, String, Date, ForeignKey
 from sqlalchemy.orm import relationship
 
@@ -5,36 +6,44 @@ from app.database.database import Base
 
 
 class Appointment(Base):
-
     __tablename__ = "appointments"
 
+    # Primary key
     id = Column(
         Integer,
         primary_key=True,
         index=True
     )
 
+    # Patient who booked the appointment
     patient_id = Column(
         Integer,
         ForeignKey("patients.id"),
-        nullable=False
+        nullable=False,
+        index=True
     )
 
+    # Assigned doctor
     doctor_id = Column(
         Integer,
         ForeignKey("doctors.id"),
-        nullable=False
+        nullable=False,
+        index=True
     )
 
+    # Department for the appointment
     department_id = Column(
         Integer,
         ForeignKey("departments.id"),
-        nullable=False
+        nullable=False,
+        index=True
     )
 
+    # Appointment details
     appointment_date = Column(
         Date,
-        nullable=False
+        nullable=False,
+        index=True
     )
 
     reason = Column(
@@ -45,9 +54,11 @@ class Appointment(Base):
     status = Column(
         String,
         default="scheduled",
-        nullable=False
+        nullable=False,
+        index=True
     )
 
+    # Relationships
     patient = relationship(
         "Patient",
         back_populates="appointments"

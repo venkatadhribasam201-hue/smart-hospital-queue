@@ -53,13 +53,16 @@ function Register() {
         payload.consultation_fee = Number(formData.consultation_fee || 0);
       }
 
-      const response = await fetch("http://127.0.0.1:8000/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        "https://nw48n1b1-8000.inc1.devtunnels.ms/auth/register",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      });
+      );
 
       const data = await response.json();
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./DoctorDashboard.css";
 
-const API = "http://127.0.0.1:8000";
+const API = "https://nw48n1b1-8000.inc1.devtunnels.ms";
 
 function DoctorDashboard() {
   const navigate = useNavigate();

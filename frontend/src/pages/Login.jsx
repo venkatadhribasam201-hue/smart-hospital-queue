@@ -1,8 +1,12 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Hospital selected on the Home page
+  const hospitalId = searchParams.get("hospital_id");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,20 +20,29 @@ function Login() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/auth/login", {
-        method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
+      // Use your existing login API
+      const response = await fetch(
+        "https://nw48n1b1-8000.inc1.devtunnels.ms/auth/login",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+            password: password,
+          }),
         },
+      );
 
-        body: JSON.stringify({
-          email: email,
-          password: password,
-        }),
-      });
+      // Handle responses that may not contain valid JSON
+      let data;
 
-      const data = await response.json();
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("Invalid response from login server.");
+      }
 
       console.log("Login response:", data);
 
@@ -41,10 +54,38 @@ function Login() {
         );
       }
 
-      // =================================================
-      // CLEAR OLD LOGIN DATA
-      // =================================================
+      // Get user information
+      const user = data.user || data;
 
+      const userId = data.user_id ?? user.user_id ?? user.id;
+      const userRole = String(data.role ?? user.role ?? "").toLowerCase();
+
+      const userEmail = data.email ?? user.email ?? email.trim();
+      const userName = data.full_name ?? user.full_name ?? "";
+
+      const patientId = data.patient_id ?? user.patient_id;
+      const doctorId = data.doctor_id ?? user.doctor_id;
+
+      // Validate the role and required ID before saving the session
+      if (
+        userRole === "patient" &&
+        (patientId === undefined || patientId === null)
+      ) {
+        throw new Error("Patient ID not found.");
+      }
+
+      if (
+        userRole === "doctor" &&
+        (doctorId === undefined || doctorId === null)
+      ) {
+        throw new Error("Doctor ID not found.");
+      }
+
+      if (!["patient", "doctor", "nurse", "receptionist"].includes(userRole)) {
+        throw new Error("User role not found or unsupported.");
+      }
+
+      // Clear previous user's login information
       localStorage.removeItem("userId");
       localStorage.removeItem("userRole");
       localStorage.removeItem("userEmail");
@@ -53,119 +94,59 @@ function Login() {
       localStorage.removeItem("patientId");
       localStorage.removeItem("doctorId");
 
-      // =================================================
-      // GET USER DATA
-      // =================================================
+      // Save selected hospital.
+      // If login was opened directly, do not keep an old hospital selection.
+      if (hospitalId !== null && hospitalId.trim() !== "") {
+        localStorage.setItem("selectedHospitalId", hospitalId);
+      } else {
+        localStorage.removeItem("selectedHospitalId");
+      }
 
-      const user = data.user || data;
+      // Save common user details
+      if (userId !== undefined && userId !== null) {
+        localStorage.setItem("userId", String(userId));
+      }
 
-      // =================================================
-      // COMMON USER DATA
-      // =================================================
-
-      const userId = data.user_id ?? user.user_id ?? user.id;
-
-      const userRole = data.role ?? user.role ?? "";
-
-      const userEmail = data.email ?? user.email ?? email;
-
-      const userName = data.full_name ?? user.full_name ?? "";
-
-      // =================================================
-      // SAVE USER NAME
-      // =================================================
+      localStorage.setItem("userRole", userRole);
+      localStorage.setItem("userEmail", userEmail);
 
       if (userName) {
         localStorage.setItem("userName", userName);
       }
 
-      // =================================================
-      // SAVE USER ID
-      // =================================================
-
-      if (userId) {
-        localStorage.setItem("userId", String(userId));
-      }
-
-      // =================================================
-      // SAVE ROLE
-      // =================================================
-
-      localStorage.setItem("userRole", userRole);
-
-      // =================================================
-      // SAVE EMAIL
-      // =================================================
-
-      localStorage.setItem("userEmail", userEmail);
-
-      // =================================================
-      // SAVE ACCESS TOKEN
-      // =================================================
-
       if (data.access_token) {
         localStorage.setItem("accessToken", data.access_token);
       }
 
-      // =================================================
-      // PATIENT ID
-      // =================================================
-
-      const patientId = data.patient_id ?? user.patient_id;
-
-      if (patientId) {
+      if (patientId !== undefined && patientId !== null) {
         localStorage.setItem("patientId", String(patientId));
       }
 
-      // =================================================
-      // DOCTOR ID
-      // =================================================
-
-      const doctorId = data.doctor_id ?? user.doctor_id;
-
-      if (doctorId) {
+      if (doctorId !== undefined && doctorId !== null) {
         localStorage.setItem("doctorId", String(doctorId));
       }
 
-      // =================================================
-      // DEBUG
-      // =================================================
-
+      // Debug information
       console.log("User ID:", userId);
       console.log("User Name:", userName);
       console.log("User Role:", userRole);
       console.log("Patient ID:", patientId);
       console.log("Doctor ID:", doctorId);
+      console.log("Selected Hospital ID:", hospitalId);
 
-      // =================================================
-      // ROLE BASED NAVIGATION
-      // =================================================
-
+      // Role-based navigation
       if (userRole === "doctor") {
-        if (!doctorId) {
-          setError("Doctor ID not found.");
-          return;
-        }
-
-        navigate("/doctor-dashboard");
+        navigate("/doctor-dashboard", { replace: true });
       } else if (userRole === "patient") {
-        if (!patientId) {
-          setError("Patient ID not found.");
-          return;
-        }
-
-        navigate("/patient-dashboard");
+        navigate("/patient-dashboard", { replace: true });
       } else if (userRole === "nurse") {
         setError("Nurse dashboard is not available yet.");
       } else if (userRole === "receptionist") {
         setError("Receptionist dashboard is not available yet.");
-      } else {
-        setError("User role not found.");
       }
     } catch (err) {
       console.error("Login error:", err);
-
-      setError(err.message || "Login failed");
+      setError(err.message || "Login failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -182,28 +163,42 @@ function Login() {
 
         <p>Login to your SmartCare account</p>
 
+        {hospitalId !== null && (
+          <p className="selected-hospital">
+            Selected Hospital ID: <strong>{hospitalId}</strong>
+          </p>
+        )}
+
         <form onSubmit={handleLogin}>
-          <label>Email Address</label>
+          <label htmlFor="login-email">Email Address</label>
 
           <input
+            id="login-email"
             type="email"
             placeholder="Enter your email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
             required
           />
 
-          <label>Password</label>
+          <label htmlFor="login-password">Password</label>
 
           <input
+            id="login-password"
             type="password"
             placeholder="Enter your password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
             required
           />
 
-          {error && <p className="error-message">{error}</p>}
+          {error && (
+            <p className="error-message" role="alert">
+              {error}
+            </p>
+          )}
 
           <button type="submit" disabled={loading}>
             {loading ? "Logging in..." : "Login"}

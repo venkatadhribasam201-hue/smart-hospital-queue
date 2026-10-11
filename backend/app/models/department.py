@@ -1,28 +1,25 @@
-from sqlalchemy import Column, Integer, String, Boolean
+
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.database.database import Base
 
 
 class Department(Base):
-
     __tablename__ = "departments"
 
-    id = Column(
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Same department name can exist in different hospitals
+    name = Column(String, nullable=False, index=True)
+
+    description = Column(String, nullable=True)
+
+    hospital_id = Column(
         Integer,
-        primary_key=True,
+        ForeignKey("hospitals.id"),
+        nullable=True,
         index=True
-    )
-
-    name = Column(
-        String,
-        unique=True,
-        nullable=False
-    )
-
-    description = Column(
-        String,
-        nullable=True
     )
 
     is_active = Column(
@@ -30,6 +27,8 @@ class Department(Base):
         default=True,
         nullable=False
     )
+
+    hospital = relationship("Hospital")
 
     appointments = relationship(
         "Appointment",
