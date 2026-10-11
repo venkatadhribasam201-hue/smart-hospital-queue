@@ -1,6 +1,5 @@
 import os
-import smtplib
-from email.message import EmailMessage
+import requests
 
 from dotenv import load_dotenv
 
@@ -8,8 +7,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
-EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
 
 
 def send_email(
@@ -18,57 +17,46 @@ def send_email(
     body: str
 ):
 
+    if not RESEND_API_KEY:
+        raise ValueError(
+            "RESEND_API_KEY is missing"
+        )
+
     if not EMAIL_ADDRESS:
         raise ValueError(
-            "EMAIL_ADDRESS is missing in .env"
+            "EMAIL_ADDRESS is missing"
         )
 
-    if not EMAIL_APP_PASSWORD:
-        raise ValueError(
-            "EMAIL_APP_PASSWORD is missing in .env"
-        )
+    payload = {
+        "from": f"Smart Hospital Administration <{EMAIL_ADDRESS}>",
+        "to": [to_email],
+        "subject": subject,
+        "text": body
+    }
 
-    message = EmailMessage()
-
-    message["From"] = (
-        f"Smart Hospital Administration "
-        f"<{EMAIL_ADDRESS}>"
-    )
-
-    message["To"] = to_email
-
-    message["Subject"] = subject
-
-    message.set_content(body)
+    headers = {
+        "Authorization": f"Bearer {RESEND_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
     print("EMAIL SENDER:", EMAIL_ADDRESS)
     print("EMAIL RECEIVER:", to_email)
 
     try:
 
-        with smtplib.SMTP(
-            "smtp.gmail.com",
-            587,
+        response = requests.post(
+            "https://api.resend.com/emails",
+            json=payload,
+            headers=headers,
             timeout=30
-        ) as smtp:
-
-            smtp.ehlo()
-
-            smtp.starttls()
-
-            smtp.ehlo()
-
-            smtp.login(
-                EMAIL_ADDRESS,
-                EMAIL_APP_PASSWORD
-            )
-
-            smtp.send_message(message)
-
-        print(
-            "EMAIL SENT SUCCESSFULLY "
-            f"FROM: {EMAIL_ADDRESS}"
         )
+
+        print("RESEND STATUS:", response.status_code)
+        print("RESEND RESPONSE:", response.text)
+
+        response.raise_for_status()
+
+        print("EMAIL SENT SUCCESSFULLY")
 
         return True
 

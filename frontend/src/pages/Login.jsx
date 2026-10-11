@@ -1,5 +1,7 @@
+
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import API_BASE_URL from "../api";
 
 function Login() {
   const navigate = useNavigate();
@@ -20,20 +22,17 @@ function Login() {
     setLoading(true);
 
     try {
-      // Use your existing login API
-      const response = await fetch(
-        "https://nw48n1b1-8000.inc1.devtunnels.ms/auth/login",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: email.trim(),
-            password: password,
-          }),
+      // Login API using the configured backend URL
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password,
+        }),
+      });
 
       // Handle responses that may not contain valid JSON
       let data;
@@ -50,7 +49,7 @@ function Login() {
         throw new Error(
           typeof data.detail === "string"
             ? data.detail
-            : "Invalid email or password",
+            : "Invalid email or password"
         );
       }
 
@@ -58,7 +57,9 @@ function Login() {
       const user = data.user || data;
 
       const userId = data.user_id ?? user.user_id ?? user.id;
-      const userRole = String(data.role ?? user.role ?? "").toLowerCase();
+      const userRole = String(
+        data.role ?? user.role ?? ""
+      ).toLowerCase();
 
       const userEmail = data.email ?? user.email ?? email.trim();
       const userName = data.full_name ?? user.full_name ?? "";
@@ -66,7 +67,7 @@ function Login() {
       const patientId = data.patient_id ?? user.patient_id;
       const doctorId = data.doctor_id ?? user.doctor_id;
 
-      // Validate the role and required ID before saving the session
+      // Validate role and required profile ID
       if (
         userRole === "patient" &&
         (patientId === undefined || patientId === null)
@@ -81,7 +82,9 @@ function Login() {
         throw new Error("Doctor ID not found.");
       }
 
-      if (!["patient", "doctor", "nurse", "receptionist"].includes(userRole)) {
+      if (
+        !["patient", "doctor", "nurse", "receptionist"].includes(userRole)
+      ) {
         throw new Error("User role not found or unsupported.");
       }
 
@@ -94,8 +97,7 @@ function Login() {
       localStorage.removeItem("patientId");
       localStorage.removeItem("doctorId");
 
-      // Save selected hospital.
-      // If login was opened directly, do not keep an old hospital selection.
+      // Save selected hospital, if provided
       if (hospitalId !== null && hospitalId.trim() !== "") {
         localStorage.setItem("selectedHospitalId", hospitalId);
       } else {
@@ -160,7 +162,6 @@ function Login() {
         </div>
 
         <h1>Welcome Back</h1>
-
         <p>Login to your SmartCare account</p>
 
         {hospitalId !== null && (

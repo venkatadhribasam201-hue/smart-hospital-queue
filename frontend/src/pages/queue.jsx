@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getQueue } from "../services/api";
-import "./Queue.css";
+import "./queue.css";
 
 function Queue() {
   const [queue, setQueue] = useState(null);

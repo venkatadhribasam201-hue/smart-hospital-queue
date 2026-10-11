@@ -68,10 +68,18 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        # Local development
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+
+        # Local network development
         "http://10.157.76.151:5173",
+
+        # Development tunnel
         "https://nw48n1b1-5173.inc1.devtunnels.ms",
+
+        # Existing deployed frontend
+        "https://smart-hospital-frontend-n63y.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -157,7 +165,9 @@ def health_check():
             "database": "connected",
         }
 
-    except Exception:
+    except Exception as e:
+        print("HEALTH CHECK ERROR:", repr(e))
+
         return {
             "status": "unhealthy",
             "database": "connection failed",

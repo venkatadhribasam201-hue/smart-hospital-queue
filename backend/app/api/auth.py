@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -13,7 +14,7 @@ from app.schemas.auth import UserRegister, UserLogin
 from app.utils.security import (
     hash_password,
     verify_password,
-    create_access_token
+    create_access_token,
 )
 
 from app.utils.email import send_email
@@ -21,7 +22,7 @@ from app.utils.email import send_email
 
 router = APIRouter(
     prefix="/auth",
-    tags=["Authentication"]
+    tags=["Authentication"],
 )
 
 
@@ -32,18 +33,15 @@ router = APIRouter(
 @router.post("/register")
 def register_user(
     user_data: UserRegister,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     try:
-        # ---------------------------------------------
         # 1. Validate role
-        # ---------------------------------------------
-
         allowed_roles = {
             "patient",
             "doctor",
             "nurse",
-            "receptionist"
+            "receptionist",
         }
 
         role = user_data.role
@@ -51,13 +49,21 @@ def register_user(
         if role not in allowed_roles:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid role"
+                detail="Invalid role",
             )
 
-        # ---------------------------------------------
-        # 2. Check existing email
-        # ---------------------------------------------
+        # 2. Validate password length before bcrypt hashing
+        password_bytes = len(
+            user_data.password.encode("utf-8")
+        )
 
+        if password_bytes > 72:
+            raise HTTPException(
+                status_code=400,
+                detail="Password must be 72 bytes or less",
+            )
+
+        # 3. Check existing email
         existing_user = (
             db.query(User)
             .filter(User.email == user_data.email)
@@ -67,13 +73,10 @@ def register_user(
         if existing_user:
             raise HTTPException(
                 status_code=400,
-                detail="Email already registered"
+                detail="Email already registered",
             )
 
-        # ---------------------------------------------
-        # 3. Check existing phone
-        # ---------------------------------------------
-
+        # 4. Check existing phone
         if user_data.phone:
             existing_phone = (
                 db.query(User)
@@ -84,31 +87,29 @@ def register_user(
             if existing_phone:
                 raise HTTPException(
                     status_code=400,
-                    detail="Phone number already registered"
+                    detail="Phone number already registered",
                 )
 
         patient_id = None
         doctor_id = None
         hospital_id = None
 
-        # hospital_id must be included in UserRegister
-        # if the frontend sends it.
         requested_hospital_id = getattr(
             user_data,
             "hospital_id",
-            None
+            None,
         )
 
-        # ---------------------------------------------
-        # 4. Validate hospital assignment
-        # ---------------------------------------------
-
-        if role in {"doctor", "patient"} and requested_hospital_id:
+        # 5. Validate hospital assignment
+        if (
+            role in {"doctor", "patient"}
+            and requested_hospital_id
+        ):
             hospital = (
                 db.query(Hospital)
                 .filter(
                     Hospital.id == requested_hospital_id,
-                    Hospital.is_active.is_(True)
+                    Hospital.is_active.is_(True),
                 )
                 .first()
             )
@@ -116,26 +117,26 @@ def register_user(
             if not hospital:
                 raise HTTPException(
                     status_code=400,
-                    detail="Selected hospital does not exist or is inactive"
+                    detail=(
+                        "Selected hospital does not exist "
+                        "or is inactive"
+                    ),
                 )
 
             hospital_id = hospital.id
 
-        # ---------------------------------------------
-        # 5. Doctor validation
-        # ---------------------------------------------
-
+        # 6. Validate doctor registration
         if role == "doctor":
             if not user_data.specialization:
                 raise HTTPException(
                     status_code=400,
-                    detail="Specialization is required"
+                    detail="Specialization is required",
                 )
 
             if not user_data.license_number:
                 raise HTTPException(
                     status_code=400,
-                    detail="License number is required"
+                    detail="License number is required",
                 )
 
             existing_license = (
@@ -150,18 +151,20 @@ def register_user(
             if existing_license:
                 raise HTTPException(
                     status_code=400,
-                    detail="License number already registered"
+                    detail="License number already registered",
                 )
 
-            # Hospital assignment is required for doctors.
-            # If hospital_id was not sent, try matching the
-            # existing hospital_name field for compatibility.
-            if not hospital_id and user_data.hospital_name:
+            # Backward compatibility with hospital_name
+            if (
+                not hospital_id
+                and user_data.hospital_name
+            ):
                 hospital = (
                     db.query(Hospital)
                     .filter(
-                        Hospital.name == user_data.hospital_name,
-                        Hospital.is_active.is_(True)
+                        Hospital.name
+                        == user_data.hospital_name,
+                        Hospital.is_active.is_(True),
                     )
                     .first()
                 )
@@ -175,34 +178,26 @@ def register_user(
                     detail=(
                         "A valid hospital_id is required "
                         "for doctor registration"
-                    )
+                    ),
                 )
 
-        # ---------------------------------------------
-        # 6. Create user
-        # ---------------------------------------------
-
+        # 7. Create user
         new_user = User(
             full_name=user_data.full_name,
             email=user_data.email,
             phone=user_data.phone,
             password=hash_password(user_data.password),
-            role=role
+            role=role,
         )
 
         db.add(new_user)
-
-        # Get generated user ID without committing yet.
         db.flush()
 
-        # ---------------------------------------------
-        # 7. Create patient profile
-        # ---------------------------------------------
-
+        # 8. Create patient profile
         if role == "patient":
             new_patient = Patient(
                 user_id=new_user.id,
-                hospital_id=hospital_id
+                hospital_id=hospital_id,
             )
 
             db.add(new_patient)
@@ -210,10 +205,7 @@ def register_user(
 
             patient_id = new_patient.id
 
-        # ---------------------------------------------
-        # 8. Create doctor profile
-        # ---------------------------------------------
-
+        # 9. Create doctor profile
         elif role == "doctor":
             new_doctor = Doctor(
                 user_id=new_user.id,
@@ -226,7 +218,7 @@ def register_user(
                 ),
                 consultation_fee=(
                     user_data.consultation_fee or 0.0
-                )
+                ),
             )
 
             db.add(new_doctor)
@@ -234,17 +226,12 @@ def register_user(
 
             doctor_id = new_doctor.id
 
-        # ---------------------------------------------
-        # 9. Save user and profile together
-        # ---------------------------------------------
-
+        # 10. Commit user and profile together
         db.commit()
         db.refresh(new_user)
 
-        # ---------------------------------------------
-        # 10. Registration email
-        # ---------------------------------------------
-
+        # 11. Send registration email
+        # Email failure should not undo registration.
         try:
             send_email(
                 new_user.email,
@@ -260,17 +247,13 @@ Role: {new_user.role}
 
 Thank you,
 Smart Hospital Team
-"""
+""",
             )
         except Exception as email_error:
-            # Email failure should not undo registration.
             print("REGISTRATION EMAIL ERROR:")
             print(repr(email_error))
 
-        # ---------------------------------------------
-        # 11. Registration response
-        # ---------------------------------------------
-
+        # 12. Registration response
         return {
             "message": "User registered successfully",
             "user_id": new_user.id,
@@ -278,7 +261,7 @@ Smart Hospital Team
             "patient_id": patient_id,
             "doctor_id": doctor_id,
             "hospital_id": hospital_id,
-            "role": new_user.role
+            "role": new_user.role,
         }
 
     except HTTPException:
@@ -293,7 +276,10 @@ Smart Hospital Team
 
         raise HTTPException(
             status_code=500,
-            detail="Registration failed. Please check the server logs."
+            detail=(
+                "Registration failed. "
+                "Please check the server logs."
+            ),
         )
 
 
@@ -304,13 +290,10 @@ Smart Hospital Team
 @router.post("/login")
 def login_user(
     user_data: UserLogin,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     try:
-        # ---------------------------------------------
         # 1. Find user
-        # ---------------------------------------------
-
         user = (
             db.query(User)
             .filter(User.email == user_data.email)
@@ -319,21 +302,18 @@ def login_user(
 
         if not user or not verify_password(
             user_data.password,
-            user.password
+            user.password,
         ):
             raise HTTPException(
                 status_code=401,
-                detail="Invalid email or password"
+                detail="Invalid email or password",
             )
 
         patient_id = None
         doctor_id = None
         hospital_id = None
 
-        # ---------------------------------------------
         # 2. Patient login
-        # ---------------------------------------------
-
         if user.role == "patient":
             patient = (
                 db.query(Patient)
@@ -345,10 +325,7 @@ def login_user(
                 patient_id = patient.id
                 hospital_id = patient.hospital_id
 
-        # ---------------------------------------------
         # 3. Doctor login
-        # ---------------------------------------------
-
         elif user.role == "doctor":
             doctor = (
                 db.query(Doctor)
@@ -359,7 +336,7 @@ def login_user(
             if not doctor:
                 raise HTTPException(
                     status_code=403,
-                    detail="Doctor profile not found"
+                    detail="Doctor profile not found",
                 )
 
             if not doctor.hospital_id:
@@ -368,14 +345,14 @@ def login_user(
                     detail=(
                         "Your account has no hospital assigned. "
                         "Please contact the administrator."
-                    )
+                    ),
                 )
 
             hospital = (
                 db.query(Hospital)
                 .filter(
                     Hospital.id == doctor.hospital_id,
-                    Hospital.is_active.is_(True)
+                    Hospital.is_active.is_(True),
                 )
                 .first()
             )
@@ -383,26 +360,20 @@ def login_user(
             if not hospital:
                 raise HTTPException(
                     status_code=403,
-                    detail="Your assigned hospital is unavailable"
+                    detail="Your assigned hospital is unavailable",
                 )
 
             doctor_id = doctor.id
             hospital_id = doctor.hospital_id
 
-        # ---------------------------------------------
         # 4. Create JWT token
-        # ---------------------------------------------
-
         access_token = create_access_token({
             "user_id": user.id,
             "email": user.email,
-            "role": user.role
+            "role": user.role,
         })
 
-        # ---------------------------------------------
-        # 5. Login notification email
-        # ---------------------------------------------
-
+        # 5. Send login notification email
         try:
             send_email(
                 user.email,
@@ -418,16 +389,13 @@ Email: {user.email}
 
 Thank you,
 Smart Hospital Team
-"""
+""",
             )
         except Exception as email_error:
             print("LOGIN EMAIL ERROR:")
             print(repr(email_error))
 
-        # ---------------------------------------------
         # 6. Login response
-        # ---------------------------------------------
-
         return {
             "message": "Login successful",
             "access_token": access_token,
@@ -437,7 +405,7 @@ Smart Hospital Team
             "patient_id": patient_id,
             "doctor_id": doctor_id,
             "hospital_id": hospital_id,
-            "role": user.role
+            "role": user.role,
         }
 
     except HTTPException:
@@ -449,5 +417,8 @@ Smart Hospital Team
 
         raise HTTPException(
             status_code=500,
-            detail="Login failed. Please check the server logs."
+            detail=(
+                "Login failed. "
+                "Please check the server logs."
+            ),
         )
