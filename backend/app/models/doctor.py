@@ -5,7 +5,6 @@ from app.database.database import Base
 
 
 class Doctor(Base):
-
     __tablename__ = "doctors"
 
     id = Column(
@@ -26,9 +25,18 @@ class Doctor(Base):
         nullable=False
     )
 
+    # Existing field for compatibility
     hospital_name = Column(
         String,
         nullable=True
+    )
+
+    # Link doctor to a hospital
+    hospital_id = Column(
+        Integer,
+        ForeignKey("hospitals.id"),
+        nullable=True,
+        index=True
     )
 
     license_number = Column(
@@ -50,6 +58,11 @@ class Doctor(Base):
     user = relationship(
         "User",
         back_populates="doctor"
+    )
+
+    hospital = relationship(
+        "Hospital",
+        back_populates="doctors"
     )
 
     appointments = relationship(

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE_URL from "../api";
 
@@ -14,40 +15,25 @@ import "./PatientDashboard.css";
 function PatientDashboard() {
   const navigate = useNavigate();
 
-  // ==========================================
-  // USER ID AND PATIENT ID
-  // ==========================================
-
   const userId = Number(localStorage.getItem("userId"));
   const patientId = Number(localStorage.getItem("patientId"));
+  const selectedHospitalId = Number(
+    localStorage.getItem("selectedHospitalId")
+  );
 
-  // ==========================================
-  // USER NAME
-  // ==========================================
-
-  const storedUserName = localStorage.getItem("userName");
-
-  const [userName, setUserName] = useState(storedUserName || "Patient");
-
-  // ==========================================
-  // DASHBOARD STATES
-  // ==========================================
+  const [userName, setUserName] = useState(
+    localStorage.getItem("userName") || "Patient"
+  );
 
   const [queue, setQueue] = useState(null);
   const [appointments, setAppointments] = useState([]);
-
   const [departments, setDepartments] = useState([]);
   const [doctors, setDoctors] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [booking, setBooking] = useState(false);
-
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-
-  // ==========================================
-  // LAB REPORT STATES
-  // ==========================================
 
   const [labReports, setLabReports] = useState([]);
   const [labTests, setLabTests] = useState([]);
@@ -55,583 +41,117 @@ function PatientDashboard() {
   const [labLoading, setLabLoading] = useState(false);
   const [labError, setLabError] = useState("");
 
-  // ==========================================
-  // VITALS STATES
-  // ==========================================
-
   const [vitals, setVitals] = useState([]);
   const [showVitals, setShowVitals] = useState(false);
   const [vitalsLoading, setVitalsLoading] = useState(false);
   const [vitalsError, setVitalsError] = useState("");
-
-  // ==========================================
-  // CONSULTATION STATES
-  // ==========================================
 
   const [consultations, setConsultations] = useState([]);
   const [showConsultations, setShowConsultations] = useState(false);
   const [consultationLoading, setConsultationLoading] = useState(false);
   const [consultationError, setConsultationError] = useState("");
 
-  // ==========================================
-  // PRESCRIPTION STATES
-  // ==========================================
-
   const [prescriptions, setPrescriptions] = useState([]);
   const [showPrescriptions, setShowPrescriptions] = useState(false);
   const [prescriptionLoading, setPrescriptionLoading] = useState(false);
   const [prescriptionError, setPrescriptionError] = useState("");
-
-  // ==========================================
-  // NOTIFICATION STATES
-  // ==========================================
 
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationLoading, setNotificationLoading] = useState(false);
   const [notificationError, setNotificationError] = useState("");
 
-  // ==========================================
-  // MEDICAL HISTORY STATES
-  // ==========================================
-
   const [medicalHistory, setMedicalHistory] = useState([]);
   const [showMedicalHistory, setShowMedicalHistory] = useState(false);
   const [medicalHistoryLoading, setMedicalHistoryLoading] = useState(false);
   const [medicalHistoryError, setMedicalHistoryError] = useState("");
-
-  // ==========================================
-  // APPOINTMENT FORM STATES
-  // ==========================================
 
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [selectedDoctor, setSelectedDoctor] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
   const [reason, setReason] = useState("");
 
-  // ==========================================
-  // LOAD USER NAME
-  // ==========================================
+  // =========================
+  // COMMON API HELPER
+  // =========================
+
+  const apiFetch = async (path, options = {}) => {
+    const token = localStorage.getItem("accessToken");
+
+    const headers = {
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    };
+
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
+
+    const responseText = await response.text();
+
+    let data = {};
+
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      data = { detail: responseText };
+    }
+
+    if (!response.ok) {
+      const detail = data.detail;
+
+      const errorText = Array.isArray(detail)
+        ? detail.map((item) => item.msg || "Validation error").join(", ")
+        : typeof detail === "string"
+          ? detail
+          : `Request failed (${response.status})`;
+
+      throw new Error(errorText);
+    }
+
+    return data;
+  };
 
   const loadUserName = () => {
     const name = localStorage.getItem("userName");
-
-    if (name && name.trim()) {
-      setUserName(name.trim());
-    } else {
-      setUserName("Patient");
-    }
+    setUserName(name?.trim() || "Patient");
   };
 
-  // ==========================================
+  // =========================
   // LOGOUT
-  // ==========================================
+  // =========================
 
   const handleLogout = () => {
-    localStorage.removeItem("userId");
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("patientId");
-    localStorage.removeItem("doctorId");
-    localStorage.removeItem("userName");
+    [
+      "userId",
+      "userRole",
+      "userEmail",
+      "accessToken",
+      "patientId",
+      "doctorId",
+      "userName",
+      "selectedHospitalId",
+    ].forEach((key) => localStorage.removeItem(key));
 
-    navigate("/login");
+    navigate("/login", { replace: true });
   };
 
-  // ==========================================
-  // LOAD LAB REPORTS
-  // ==========================================
-
-  const loadLabReports = async () => {
-    try {
-      setLabLoading(true);
-      setLabError("");
-
-      const [reportsResponse, testsResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/lab-reports/`),
-        fetch(`${API_BASE_URL}/lab-tests/`),
-      ]);
-
-      const reportsData = await reportsResponse.json();
-      const testsData = await testsResponse.json();
-
-      if (!reportsResponse.ok) {
-        throw new Error("Failed to load lab reports");
-      }
-
-      if (!testsResponse.ok) {
-        throw new Error("Failed to load lab tests");
-      }
-
-      const patientReports = Array.isArray(reportsData)
-        ? reportsData.filter(
-            (report) => Number(report.patient_id) === Number(patientId),
-          )
-        : [];
-
-      setLabReports(patientReports);
-      setLabTests(Array.isArray(testsData) ? testsData : []);
-    } catch (err) {
-      console.error("Lab report error:", err);
-
-      setLabError(err.message || "Failed to load lab reports");
-    } finally {
-      setLabLoading(false);
-    }
-  };
-
-  // ==========================================
-  // GET LAB TEST NAME
-  // ==========================================
-
-  const getLabTestName = (labTestId) => {
-    const test = labTests.find((item) => Number(item.id) === Number(labTestId));
-
-    return test ? test.test_name : `Lab Test ${labTestId}`;
-  };
-
-  // ==========================================
-  // LOAD VITALS
-  // ==========================================
-
-  const loadVitals = async () => {
-    try {
-      setVitalsLoading(true);
-      setVitalsError("");
-
-      const response = await fetch(
-        `${API_BASE_URL}/vitals/patient/${patientId}`,
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "Failed to load vitals",
-        );
-      }
-
-      setVitals(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Vitals error:", err);
-
-      setVitalsError(err.message || "Failed to load vitals");
-    } finally {
-      setVitalsLoading(false);
-    }
-  };
-
-  // ==========================================
-  // OPEN VITALS
-  // ==========================================
-
-  const handleVitals = async () => {
-    setShowVitals(true);
-    await loadVitals();
-  };
-
-  // ==========================================
-  // LOAD CONSULTATIONS
-  // ==========================================
-
-  const loadConsultations = async () => {
-    try {
-      setConsultationLoading(true);
-      setConsultationError("");
-
-      const response = await fetch(`${API_BASE_URL}/consultations/`);
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "Failed to load consultations",
-        );
-      }
-
-      const patientConsultations = Array.isArray(data)
-        ? data.filter(
-            (consultation) =>
-              Number(consultation.patient_id) === Number(patientId),
-          )
-        : [];
-
-      setConsultations(patientConsultations);
-    } catch (err) {
-      console.error("Consultation error:", err);
-
-      setConsultationError(err.message || "Failed to load consultations");
-    } finally {
-      setConsultationLoading(false);
-    }
-  };
-
-  // ==========================================
-  // OPEN CONSULTATIONS
-  // ==========================================
-
-  const handleConsultations = async () => {
-    setShowConsultations(true);
-    await loadConsultations();
-  };
-
-  // ==========================================
-  // LOAD PRESCRIPTIONS
-  // ==========================================
-
-  const loadPrescriptions = async () => {
-    try {
-      setPrescriptionLoading(true);
-      setPrescriptionError("");
-
-      const response = await fetch(`${API_BASE_URL}/prescriptions/`);
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "Failed to load prescriptions",
-        );
-      }
-
-      const patientPrescriptions = Array.isArray(data)
-        ? data.filter(
-            (prescription) =>
-              Number(prescription.patient_id) === Number(patientId),
-          )
-        : [];
-
-      setPrescriptions(patientPrescriptions);
-    } catch (err) {
-      console.error("Prescription error:", err);
-
-      setPrescriptionError(err.message || "Failed to load prescriptions");
-    } finally {
-      setPrescriptionLoading(false);
-    }
-  };
-
-  // ==========================================
-  // OPEN PRESCRIPTIONS
-  // ==========================================
-
-  const handlePrescriptions = async () => {
-    setShowPrescriptions(true);
-    await loadPrescriptions();
-  };
-
-  // ==========================================
-  // LOAD NOTIFICATIONS
-  // ==========================================
-
-  const loadNotifications = async () => {
-    try {
-      setNotificationLoading(true);
-      setNotificationError("");
-
-      if (!userId || Number.isNaN(userId)) {
-        throw new Error("User ID not found. Please login again.");
-      }
-
-      const response = await fetch(
-        `${API_BASE_URL}/notifications/user/${userId}`,
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error(
-            "Notification API endpoint not found. Please check backend notifications route.",
-          );
-        }
-
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "Failed to load notifications",
-        );
-      }
-
-      setNotifications(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Notification error:", err);
-
-      setNotificationError(err.message || "Failed to load notifications");
-    } finally {
-      setNotificationLoading(false);
-    }
-  };
-
-  // ==========================================
-  // OPEN NOTIFICATIONS
-  // ==========================================
-
-  const handleNotifications = async () => {
-    setShowNotifications(true);
-    await loadNotifications();
-  };
-
-  // ==========================================
-  // MARK NOTIFICATION AS READ
-  // ==========================================
-
-  const markNotificationAsRead = async (notificationId) => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/notifications/${notificationId}/read`,
-        {
-          method: "PUT",
-        },
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "Failed to mark notification as read",
-        );
-      }
-
-      await loadNotifications();
-    } catch (err) {
-      console.error("Mark notification error:", err);
-
-      setNotificationError(
-        err.message || "Failed to mark notification as read",
-      );
-    }
-  };
-
-  // ==========================================
-  // GET HISTORY DATE
-  // ==========================================
-
-  const getHistoryDate = (dateValue) => {
-    if (!dateValue) {
-      return "Not available";
-    }
-
-    return String(dateValue).split("T")[0];
-  };
-
-  // ==========================================
-  // LOAD MEDICAL HISTORY
-  // ==========================================
-
-  const loadMedicalHistory = async () => {
-    try {
-      setMedicalHistoryLoading(true);
-      setMedicalHistoryError("");
-
-      const [
-        consultationResponse,
-        prescriptionResponse,
-        vitalsResponse,
-        labReportsResponse,
-      ] = await Promise.all([
-        fetch(`${API_BASE_URL}/consultations/`),
-        fetch(`${API_BASE_URL}/prescriptions/`),
-        fetch(`${API_BASE_URL}/vitals/patient/${patientId}`),
-        fetch(`${API_BASE_URL}/lab-reports/`),
-      ]);
-
-      const [consultationData, prescriptionData, vitalsData, labReportsData] =
-        await Promise.all([
-          consultationResponse.json(),
-          prescriptionResponse.json(),
-          vitalsResponse.json(),
-          labReportsResponse.json(),
-        ]);
-
-      if (!consultationResponse.ok) {
-        throw new Error("Failed to load consultation history");
-      }
-
-      if (!prescriptionResponse.ok) {
-        throw new Error("Failed to load prescription history");
-      }
-
-      if (!vitalsResponse.ok) {
-        throw new Error("Failed to load vitals history");
-      }
-
-      if (!labReportsResponse.ok) {
-        throw new Error("Failed to load lab report history");
-      }
-
-      const patientConsultations = Array.isArray(consultationData)
-        ? consultationData.filter(
-            (item) => Number(item.patient_id) === Number(patientId),
-          )
-        : [];
-
-      const patientPrescriptions = Array.isArray(prescriptionData)
-        ? prescriptionData.filter(
-            (item) => Number(item.patient_id) === Number(patientId),
-          )
-        : [];
-
-      const patientVitals = Array.isArray(vitalsData) ? vitalsData : [];
-
-      const patientLabReports = Array.isArray(labReportsData)
-        ? labReportsData.filter(
-            (item) => Number(item.patient_id) === Number(patientId),
-          )
-        : [];
-
-      const historyMap = {};
-
-      // ==========================================
-      // CONSULTATIONS
-      // ==========================================
-
-      patientConsultations.forEach((consultation) => {
-        const date = getHistoryDate(consultation.consultation_date);
-
-        if (!historyMap[date]) {
-          historyMap[date] = {
-            date,
-            doctorIds: [],
-            consultations: [],
-            prescriptions: [],
-            vitals: [],
-            labReports: [],
-          };
-        }
-
-        if (
-          consultation.doctor_id &&
-          !historyMap[date].doctorIds.includes(Number(consultation.doctor_id))
-        ) {
-          historyMap[date].doctorIds.push(Number(consultation.doctor_id));
-        }
-
-        historyMap[date].consultations.push(consultation);
-      });
-
-      // ==========================================
-      // PRESCRIPTIONS
-      // ==========================================
-
-      patientPrescriptions.forEach((prescription) => {
-        const date = getHistoryDate(prescription.prescribed_at);
-
-        if (!historyMap[date]) {
-          historyMap[date] = {
-            date,
-            doctorIds: [],
-            consultations: [],
-            prescriptions: [],
-            vitals: [],
-            labReports: [],
-          };
-        }
-
-        if (
-          prescription.doctor_id &&
-          !historyMap[date].doctorIds.includes(Number(prescription.doctor_id))
-        ) {
-          historyMap[date].doctorIds.push(Number(prescription.doctor_id));
-        }
-
-        historyMap[date].prescriptions.push(prescription);
-      });
-
-      // ==========================================
-      // VITALS
-      // ==========================================
-
-      patientVitals.forEach((vital) => {
-        const date = getHistoryDate(vital.recorded_at);
-
-        if (!historyMap[date]) {
-          historyMap[date] = {
-            date,
-            doctorIds: [],
-            consultations: [],
-            prescriptions: [],
-            vitals: [],
-            labReports: [],
-          };
-        }
-
-        historyMap[date].vitals.push(vital);
-      });
-
-      // ==========================================
-      // LAB REPORTS
-      // ==========================================
-
-      patientLabReports.forEach((report) => {
-        const date = getHistoryDate(report.report_date);
-
-        if (!historyMap[date]) {
-          historyMap[date] = {
-            date,
-            doctorIds: [],
-            consultations: [],
-            prescriptions: [],
-            vitals: [],
-            labReports: [],
-          };
-        }
-
-        historyMap[date].labReports.push(report);
-      });
-
-      const historyArray = Object.values(historyMap).sort((a, b) => {
-        if (a.date === "Not available" && b.date === "Not available") {
-          return 0;
-        }
-
-        if (a.date === "Not available") {
-          return 1;
-        }
-
-        if (b.date === "Not available") {
-          return -1;
-        }
-
-        return new Date(b.date) - new Date(a.date);
-      });
-
-      setMedicalHistory(historyArray);
-    } catch (err) {
-      console.error("Medical history error:", err);
-
-      setMedicalHistoryError(err.message || "Failed to load medical history");
-    } finally {
-      setMedicalHistoryLoading(false);
-    }
-  };
-
-  // ==========================================
-  // OPEN MEDICAL HISTORY
-  // ==========================================
-
-  const handleMedicalHistory = async () => {
-    setShowMedicalHistory(true);
-    await loadMedicalHistory();
-  };
-
-  // ==========================================
+  // =========================
   // LOAD DASHBOARD
-  // ==========================================
+  // =========================
 
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
+
+      if (!Number.isInteger(selectedHospitalId) || selectedHospitalId <= 0) {
+        throw new Error(
+          "Hospital not selected. Please select a hospital and log in again."
+        );
+      }
 
       const [
         queueResponse,
@@ -640,139 +160,410 @@ function PatientDashboard() {
         doctorResponse,
       ] = await Promise.all([
         getQueue(),
-        getAppointments(),
-        getDepartments(),
-        getDoctors(),
+        getAppointments(selectedHospitalId),
+        getDepartments(selectedHospitalId),
+        getDoctors(selectedHospitalId),
       ]);
 
-      // ==========================================
-      // QUEUE DATA
-      // ==========================================
-
       const queueData = Array.isArray(queueResponse) ? queueResponse : [];
-
-      const patientQueue = queueData.filter(
-        (item) => Number(item.patient_id) === Number(patientId),
-      );
-
-      const activeQueues = patientQueue.filter(
-        (item) => item.status === "waiting" || item.status === "serving",
-      );
-
-      if (activeQueues.length > 0) {
-        setQueue(activeQueues[activeQueues.length - 1]);
-      } else if (patientQueue.length > 0) {
-        setQueue(patientQueue[patientQueue.length - 1]);
-      } else {
-        setQueue(null);
-      }
-
-      // ==========================================
-      // APPOINTMENT DATA
-      // ==========================================
-
       const appointmentData = Array.isArray(appointmentResponse)
         ? appointmentResponse
         : [];
-
-      const patientAppointments = appointmentData.filter(
-        (item) => Number(item.patient_id) === Number(patientId),
-      );
-
-      setAppointments(patientAppointments);
-
-      // ==========================================
-      // DEPARTMENT DATA
-      // ==========================================
-
       const departmentData = Array.isArray(departmentResponse)
         ? departmentResponse
         : [];
-
-      setDepartments(departmentData);
-
-      // ==========================================
-      // DOCTOR DATA
-      // ==========================================
-
       const doctorData = Array.isArray(doctorResponse) ? doctorResponse : [];
 
-      setDoctors(doctorData);
+      // Only show this patient's appointments for the selected hospital.
+      const hospitalAppointments = appointmentData.filter(
+        (item) =>
+          Number(item.patient_id) === patientId &&
+          Number(item.hospital_id) === selectedHospitalId
+      );
 
-      console.log("User ID:", userId);
+      const hospitalDepartments = departmentData.filter(
+        (item) => Number(item.hospital_id) === selectedHospitalId
+      );
 
-      console.log("Patient ID:", patientId);
+      const departmentIds = new Set(
+        hospitalDepartments.map((item) => Number(item.id))
+      );
 
-      console.log("User Name:", userName);
+      const hospitalDoctors = doctorData.filter(
+        (doctor) =>
+          Number(doctor.hospital_id) === selectedHospitalId &&
+          departmentIds.has(Number(doctor.department_id))
+      );
 
-      console.log("Queue:", patientQueue);
+      const appointmentIds = new Set(
+        hospitalAppointments.map((item) => Number(item.id))
+      );
 
-      console.log("Active Queue:", activeQueues);
+      const hospitalQueue = queueData.filter(
+        (item) =>
+          Number(item.patient_id) === patientId &&
+          appointmentIds.has(Number(item.appointment_id))
+      );
 
-      console.log("Appointments:", patientAppointments);
+      const activeQueues = hospitalQueue.filter(
+        (item) => item.status === "waiting" || item.status === "serving"
+      );
+
+      setQueue(
+        activeQueues.length
+          ? activeQueues[activeQueues.length - 1]
+          : hospitalQueue.length
+            ? hospitalQueue[hospitalQueue.length - 1]
+            : null
+      );
+
+      setAppointments(hospitalAppointments);
+      setDepartments(hospitalDepartments);
+      setDoctors(hospitalDoctors);
+
+      console.log("Selected hospital:", selectedHospitalId);
+      console.log("Appointments:", hospitalAppointments);
+      console.log("Departments:", hospitalDepartments);
+      console.log("Doctors:", hospitalDoctors);
     } catch (err) {
       console.error("Dashboard error:", err);
-
-      setError("Failed to load dashboard data");
+      setError(err.message || "Failed to load dashboard data");
     } finally {
       setLoading(false);
     }
+  }, [patientId, selectedHospitalId]);
+
+  // =========================
+  // NOTIFICATIONS
+  // =========================
+
+  const loadNotifications = async () => {
+    try {
+      setNotificationLoading(true);
+      setNotificationError("");
+
+      if (!Number.isInteger(userId) || userId <= 0) {
+        throw new Error("User ID not found. Please log in again.");
+      }
+
+      const data = await apiFetch(`/notifications/user/${userId}`);
+
+      setNotifications(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Notification error:", err);
+      setNotificationError(
+        err.message || "Failed to load notifications"
+      );
+    } finally {
+      setNotificationLoading(false);
+    }
   };
 
-  // ==========================================
-  // INITIAL LOAD
-  // ==========================================
+  const handleNotifications = async () => {
+    setShowNotifications(true);
+    await loadNotifications();
+  };
 
-  useEffect(() => {
-    if (
-      !userId ||
-      !patientId ||
-      Number.isNaN(userId) ||
-      Number.isNaN(patientId)
-    ) {
-      navigate("/login");
-      return;
+  const markNotificationAsRead = async (notificationId) => {
+    try {
+      setNotificationError("");
+
+      await apiFetch(`/notifications/${notificationId}/read`, {
+        method: "PUT",
+      });
+
+      await loadNotifications();
+    } catch (err) {
+      setNotificationError(
+        err.message || "Failed to mark notification as read"
+      );
     }
+  };
 
-    loadUserName();
-    loadDashboard();
-    loadNotifications();
-  }, []);
+  // =========================
+  // LAB REPORTS
+  // =========================
 
-  // ==========================================
-  // FILTER DOCTORS
-  // ==========================================
+  const loadLabReports = async () => {
+    try {
+      setLabLoading(true);
+      setLabError("");
 
-  const filteredDoctors = doctors.filter((doctor) => {
-    if (!selectedDepartment) {
-      return false;
+      const [reportsData, testsData] = await Promise.all([
+        apiFetch("/lab-reports/"),
+        apiFetch("/lab-tests/"),
+      ]);
+
+      setLabReports(
+        Array.isArray(reportsData)
+          ? reportsData.filter(
+              (item) => Number(item.patient_id) === patientId
+            )
+          : []
+      );
+
+      setLabTests(Array.isArray(testsData) ? testsData : []);
+    } catch (err) {
+      console.error("Lab reports error:", err);
+      setLabError(err.message || "Failed to load lab reports");
+    } finally {
+      setLabLoading(false);
     }
+  };
 
-    return Number(doctor.department_id) === Number(selectedDepartment);
-  });
+  const getLabTestName = (labTestId) => {
+    const test = labTests.find(
+      (item) => Number(item.id) === Number(labTestId)
+    );
 
-  // ==========================================
-  // GET DEPARTMENT NAME
-  // ==========================================
+    return test ? test.test_name : `Lab Test ${labTestId}`;
+  };
+
+  const handleLabReports = async () => {
+    setShowLabReports(true);
+    await loadLabReports();
+  };
+
+  // =========================
+  // VITALS
+  // =========================
+
+  const loadVitals = async () => {
+    try {
+      setVitalsLoading(true);
+      setVitalsError("");
+
+      const data = await apiFetch(`/vitals/patient/${patientId}`);
+
+      setVitals(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Vitals error:", err);
+      setVitalsError(err.message || "Failed to load vitals");
+    } finally {
+      setVitalsLoading(false);
+    }
+  };
+
+  const handleVitals = async () => {
+    setShowVitals(true);
+    await loadVitals();
+  };
+
+  // =========================
+  // CONSULTATIONS
+  // =========================
+
+  const loadConsultations = async () => {
+    try {
+      setConsultationLoading(true);
+      setConsultationError("");
+
+      const data = await apiFetch("/consultations/");
+
+      setConsultations(
+        Array.isArray(data)
+          ? data.filter(
+              (item) => Number(item.patient_id) === patientId
+            )
+          : []
+      );
+    } catch (err) {
+      console.error("Consultations error:", err);
+      setConsultationError(
+        err.message || "Failed to load consultations"
+      );
+    } finally {
+      setConsultationLoading(false);
+    }
+  };
+
+  const handleConsultations = async () => {
+    setShowConsultations(true);
+    await loadConsultations();
+  };
+
+  // =========================
+  // PRESCRIPTIONS
+  // =========================
+
+  const loadPrescriptions = async () => {
+    try {
+      setPrescriptionLoading(true);
+      setPrescriptionError("");
+
+      const data = await apiFetch("/prescriptions/");
+
+      setPrescriptions(
+        Array.isArray(data)
+          ? data.filter(
+              (item) => Number(item.patient_id) === patientId
+            )
+          : []
+      );
+    } catch (err) {
+      console.error("Prescriptions error:", err);
+      setPrescriptionError(
+        err.message || "Failed to load prescriptions"
+      );
+    } finally {
+      setPrescriptionLoading(false);
+    }
+  };
+
+  const handlePrescriptions = async () => {
+    setShowPrescriptions(true);
+    await loadPrescriptions();
+  };
+
+  // =========================
+  // MEDICAL HISTORY
+  // =========================
+
+  const getHistoryDate = (value) =>
+    value ? String(value).split("T")[0] : "Not available";
+
+  const loadMedicalHistory = async () => {
+    try {
+      setMedicalHistoryLoading(true);
+      setMedicalHistoryError("");
+
+      const [
+        consultationData,
+        prescriptionData,
+        vitalsData,
+        labReportsData,
+      ] = await Promise.all([
+        apiFetch("/consultations/"),
+        apiFetch("/prescriptions/"),
+        apiFetch(`/vitals/patient/${patientId}`),
+        apiFetch("/lab-reports/"),
+      ]);
+
+      const patientConsultations = Array.isArray(consultationData)
+        ? consultationData.filter(
+            (item) => Number(item.patient_id) === patientId
+          )
+        : [];
+
+      const patientPrescriptions = Array.isArray(prescriptionData)
+        ? prescriptionData.filter(
+            (item) => Number(item.patient_id) === patientId
+          )
+        : [];
+
+      const patientVitals = Array.isArray(vitalsData) ? vitalsData : [];
+
+      const patientLabReports = Array.isArray(labReportsData)
+        ? labReportsData.filter(
+            (item) => Number(item.patient_id) === patientId
+          )
+        : [];
+
+      const historyMap = {};
+
+      const ensureDate = (date) => {
+        if (!historyMap[date]) {
+          historyMap[date] = {
+            date,
+            doctorIds: [],
+            consultations: [],
+            prescriptions: [],
+            vitals: [],
+            labReports: [],
+          };
+        }
+
+        return historyMap[date];
+      };
+
+      patientConsultations.forEach((item) => {
+        const entry = ensureDate(
+          getHistoryDate(item.consultation_date)
+        );
+
+        if (
+          item.doctor_id &&
+          !entry.doctorIds.includes(Number(item.doctor_id))
+        ) {
+          entry.doctorIds.push(Number(item.doctor_id));
+        }
+
+        entry.consultations.push(item);
+      });
+
+      patientPrescriptions.forEach((item) => {
+        const entry = ensureDate(
+          getHistoryDate(item.prescribed_at)
+        );
+
+        if (
+          item.doctor_id &&
+          !entry.doctorIds.includes(Number(item.doctor_id))
+        ) {
+          entry.doctorIds.push(Number(item.doctor_id));
+        }
+
+        entry.prescriptions.push(item);
+      });
+
+      patientVitals.forEach((item) => {
+        ensureDate(getHistoryDate(item.recorded_at)).vitals.push(item);
+      });
+
+      patientLabReports.forEach((item) => {
+        ensureDate(getHistoryDate(item.report_date)).labReports.push(item);
+      });
+
+      setMedicalHistory(
+        Object.values(historyMap).sort((a, b) => {
+          if (a.date === "Not available") return 1;
+          if (b.date === "Not available") return -1;
+
+          return new Date(b.date) - new Date(a.date);
+        })
+      );
+    } catch (err) {
+      console.error("Medical history error:", err);
+      setMedicalHistoryError(
+        err.message || "Failed to load medical history"
+      );
+    } finally {
+      setMedicalHistoryLoading(false);
+    }
+  };
+
+  const handleMedicalHistory = async () => {
+    setShowMedicalHistory(true);
+    await loadMedicalHistory();
+  };
+
+  // =========================
+  // LOOKUP HELPERS
+  // =========================
+
+  const filteredDoctors = doctors.filter(
+    (doctor) =>
+      selectedDepartment &&
+      Number(doctor.department_id) === Number(selectedDepartment) &&
+      Number(doctor.hospital_id) === selectedHospitalId
+  );
 
   const getDepartmentName = (departmentId) => {
     const department = departments.find(
-      (item) => Number(item.id) === Number(departmentId),
+      (item) => Number(item.id) === Number(departmentId)
     );
 
-    return department ? department.name : `Department ${departmentId}`;
+    return department
+      ? department.name
+      : `Department ${departmentId}`;
   };
 
-  // ==========================================
-  // GET DOCTOR NAME
-  // ==========================================
-
   const getDoctorName = (doctorId) => {
-    const doctor = doctors.find((item) => Number(item.id) === Number(doctorId));
+    const doctor = doctors.find(
+      (item) => Number(item.id) === Number(doctorId)
+    );
 
-    if (!doctor) {
-      return `Doctor ${doctorId}`;
-    }
+    if (!doctor) return `Doctor ${doctorId}`;
 
     return (
       doctor.name ||
@@ -782,30 +573,21 @@ function PatientDashboard() {
     );
   };
 
-  // ==========================================
-  // GET HISTORY DOCTORS
-  // ==========================================
-
   const getHistoryDoctors = (doctorIds) => {
     if (!Array.isArray(doctorIds) || doctorIds.length === 0) {
       return "Not available";
     }
 
-    return doctorIds.map((doctorId) => getDoctorName(doctorId)).join(", ");
+    return doctorIds.map(getDoctorName).join(", ");
   };
 
-  // ==========================================
-  // OPEN LAB REPORTS
-  // ==========================================
+  const unreadNotifications = notifications.filter(
+    (item) => !item.is_read
+  ).length;
 
-  const handleLabReports = async () => {
-    setShowLabReports(true);
-    await loadLabReports();
-  };
-
-  // ==========================================
+  // =========================
   // BOOK APPOINTMENT
-  // ==========================================
+  // =========================
 
   const handleBookAppointment = async (event) => {
     event.preventDefault();
@@ -813,205 +595,150 @@ function PatientDashboard() {
     setMessage("");
     setError("");
 
-    if (!selectedDepartment) {
-      setError("Please select a department");
+    if (!Number.isInteger(patientId) || patientId <= 0) {
+      setError("Patient ID not found. Please log in again.");
       return;
     }
 
-    if (!selectedDoctor) {
-      setError("Please select a doctor");
+    if (
+      !Number.isInteger(selectedHospitalId) ||
+      selectedHospitalId <= 0
+    ) {
+      setError("Hospital not selected. Please log in again.");
       return;
     }
 
-    if (!appointmentDate) {
-      setError("Please select appointment date");
+    if (
+      !selectedDepartment ||
+      !selectedDoctor ||
+      !appointmentDate ||
+      !reason.trim()
+    ) {
+      setError("Please complete all appointment fields.");
       return;
     }
 
-    if (!reason.trim()) {
-      setError("Please enter appointment reason");
+    const doctor = doctors.find(
+      (item) => Number(item.id) === Number(selectedDoctor)
+    );
+
+    const department = departments.find(
+      (item) => Number(item.id) === Number(selectedDepartment)
+    );
+
+    if (
+      !doctor ||
+      !department ||
+      Number(doctor.hospital_id) !== selectedHospitalId ||
+      Number(department.hospital_id) !== selectedHospitalId ||
+      Number(doctor.department_id) !== Number(selectedDepartment)
+    ) {
+      setError(
+        "Selected doctor or department does not belong to this hospital."
+      );
       return;
     }
 
     try {
       setBooking(true);
 
-      // ==========================================
-      // CREATE APPOINTMENT
-      // ==========================================
-
-      const response = await fetch(`${API_BASE_URL}/appointments/`, {
+      const appointmentData = await apiFetch("/appointments/", {
         method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-
         body: JSON.stringify({
-          patient_id: Number(patientId),
-
+          patient_id: patientId,
           doctor_id: Number(selectedDoctor),
-
           department_id: Number(selectedDepartment),
-
+          hospital_id: selectedHospitalId,
           appointment_date: appointmentDate,
-
           reason: reason.trim(),
-
           status: "scheduled",
         }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        let errorMessage = "Appointment booking failed";
-
-        if (typeof data.detail === "string") {
-          errorMessage = data.detail;
-        } else if (Array.isArray(data.detail)) {
-          errorMessage = data.detail.map((item) => item.msg).join(", ");
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      // ==========================================
-      // APPOINTMENT ID
-      // ==========================================
-
-      const appointmentId = Number(data.appointment_id ?? data.id);
-
-      if (!Number.isInteger(appointmentId)) {
-        throw new Error(
-          "Appointment ID was not returned correctly by the backend.",
-        );
-      }
-
-      // ==========================================
-      // CREATE QUEUE TOKEN
-      // ==========================================
-
-      const queuePayload = {
-        appointment_id: appointmentId,
-
-        patient_id: Number(patientId),
-
-        doctor_id: Number(selectedDoctor),
-
-        queue_date: appointmentDate,
-
-        estimated_waiting_time: 0,
-      };
-
-      const queueResponse = await fetch(`${API_BASE_URL}/queue/`, {
-        method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-
-        body: JSON.stringify(queuePayload),
-      });
-
-      const queueData = await queueResponse.json();
-
-      if (!queueResponse.ok) {
-        let queueError =
-          "Appointment created but queue token generation failed.";
-
-        if (typeof queueData.detail === "string") {
-          queueError = queueData.detail;
-        } else if (Array.isArray(queueData.detail)) {
-          queueError = queueData.detail
-            .map((item) => item.msg || "Queue validation error")
-            .join(", ");
-        }
-
-        throw new Error(queueError);
-      }
-
-      // ==========================================
-      // QUEUE NOTIFICATION
-      // ==========================================
-
-      try {
-        const notificationResponse = await fetch(
-          `${API_BASE_URL}/notifications/`,
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type": "application/json",
-            },
-
-            body: JSON.stringify({
-              user_id: Number(userId),
-
-              title: "Queue Token Generated",
-
-              message: `Your queue token is ${queueData.token_number}. Your estimated waiting time is ${queueData.estimated_waiting_time ?? 0} minutes.`,
-
-              notification_type: "queue",
-
-              is_read: false,
-            }),
-          },
-        );
-
-        const notificationData = await notificationResponse.json();
-
-        if (!notificationResponse.ok) {
-          console.error("Queue notification failed:", notificationData);
-        }
-      } catch (notificationError) {
-        console.error("Queue notification error:", notificationError);
-      }
-
-      await loadNotifications();
-
-      // ==========================================
-      // SUCCESS MESSAGE
-      // ==========================================
-
-      setMessage(
-        `Appointment booked successfully. Queue Token ${queueData.token_number} | Estimated Waiting Time: ${queueData.estimated_waiting_time ?? 0} min`,
+      const appointmentId = Number(
+        appointmentData.appointment_id ?? appointmentData.id
       );
 
-      // ==========================================
-      // CLEAR FORM
-      // ==========================================
+      if (!Number.isInteger(appointmentId) || appointmentId <= 0) {
+        throw new Error(
+          "Appointment created, but the API did not return its ID."
+        );
+      }
+
+      const queueData = await apiFetch("/queue/", {
+        method: "POST",
+        body: JSON.stringify({
+          appointment_id: appointmentId,
+          patient_id: patientId,
+          doctor_id: Number(selectedDoctor),
+          queue_date: appointmentDate,
+          estimated_waiting_time: 0,
+        }),
+      });
+
+      // Notification failure should not hide a successful booking.
+      try {
+        await apiFetch("/notifications/", {
+          method: "POST",
+          body: JSON.stringify({
+            user_id: userId,
+            title: "Queue Token Generated",
+            message: `Your queue token is ${queueData.token_number ?? "created"}. Estimated waiting time: ${queueData.estimated_waiting_time ?? 0} minutes.`,
+            notification_type: "queue",
+            is_read: false,
+          }),
+        });
+      } catch (notificationErr) {
+        console.error(
+          "Queue notification creation failed:",
+          notificationErr
+        );
+      }
+
+      setMessage(
+        `Appointment booked successfully. Queue Token: ${queueData.token_number ?? "Created"}. Estimated waiting time: ${queueData.estimated_waiting_time ?? 0} minutes.`
+      );
 
       setSelectedDepartment("");
       setSelectedDoctor("");
       setAppointmentDate("");
       setReason("");
 
-      // ==========================================
-      // RELOAD DASHBOARD
-      // ==========================================
-
-      await loadDashboard();
+      await Promise.all([
+        loadDashboard(),
+        loadNotifications(),
+      ]);
     } catch (err) {
-      console.error("Booking error:", err);
-
-      setError(err.message || "Failed to book appointment");
+      console.error("Appointment booking error:", err);
+      setError(err.message || "Appointment booking failed");
     } finally {
       setBooking(false);
     }
   };
 
-  // ==========================================
-  // UNREAD NOTIFICATION COUNT
-  // ==========================================
+  // =========================
+  // INITIAL LOAD
+  // =========================
 
-  const unreadNotifications = notifications.filter(
-    (notification) => !notification.is_read,
-  ).length;
+  useEffect(() => {
+    if (
+      !Number.isInteger(userId) ||
+      userId <= 0 ||
+      !Number.isInteger(patientId) ||
+      patientId <= 0
+    ) {
+      navigate("/login", { replace: true });
+      return;
+    }
 
-  // ==========================================
+    loadUserName();
+    loadDashboard();
+    loadNotifications();
+  }, [userId, patientId, navigate, loadDashboard]);
+
+  // =========================
   // LOADING SCREEN
-  // ==========================================
+  // =========================
 
   if (loading) {
     return (
@@ -1023,197 +750,151 @@ function PatientDashboard() {
     );
   }
 
-  // ==========================================
+  // =========================
   // DASHBOARD UI
-  // ==========================================
+  // =========================
 
   return (
     <div className="dashboard-page">
       <div className="dashboard-container">
-        {/* HEADER */}
-
-        <div
+        <header
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: "20px",
+            flexWrap: "wrap",
+            gap: 12,
+            marginBottom: 20,
           }}
         >
           <div>
             <h1>🏥 Smart Hospital</h1>
-
             <p className="welcome">Welcome, {userName} 👋</p>
+            <p>
+              Selected Hospital ID:{" "}
+              {selectedHospitalId || "Not selected"}
+            </p>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-            }}
-          >
-            {/* NOTIFICATIONS */}
-
-            <button
-              type="button"
-              onClick={handleNotifications}
-              style={{
-                position: "relative",
-                padding: "12px 18px",
-                border: "none",
-                borderRadius: "8px",
-                cursor: "pointer",
-                background: "#2563eb",
-                color: "white",
-                fontSize: "16px",
-              }}
-            >
-              🔔 Notifications
-              {unreadNotifications > 0 && (
-                <span
-                  style={{
-                    position: "absolute",
-                    top: "-8px",
-                    right: "-8px",
-                    background: "red",
-                    color: "white",
-                    borderRadius: "50%",
-                    minWidth: "22px",
-                    height: "22px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "12px",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {unreadNotifications}
-                </span>
-              )}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button type="button" onClick={handleNotifications}>
+              🔔 Notifications{" "}
+              {unreadNotifications > 0 && `(${unreadNotifications})`}
             </button>
 
-            {/* LOGOUT */}
-
-            <button
-              type="button"
-              onClick={handleLogout}
-              style={{
-                padding: "12px 18px",
-                border: "none",
-                borderRadius: "8px",
-                cursor: "pointer",
-                background: "#dc2626",
-                color: "white",
-                fontSize: "16px",
-              }}
-            >
+            <button type="button" onClick={handleLogout}>
               🚪 Logout
             </button>
           </div>
-        </div>
+        </header>
+
+        {error && (
+          <div className="error-message" role="alert">
+            ❌ {error}
+          </div>
+        )}
+
+        {message && (
+          <div className="success-message" role="status">
+            {message}
+          </div>
+        )}
 
         {/* BOOK APPOINTMENT */}
 
-        <div className="dashboard-card">
+        <section className="dashboard-card">
           <h2>📅 Book Appointment</h2>
 
-          <form onSubmit={handleBookAppointment} className="appointment-form">
-            <label>Select Department</label>
+          <form
+            onSubmit={handleBookAppointment}
+            className="appointment-form"
+          >
+            <label htmlFor="department">Select Department</label>
 
             <select
+              id="department"
               value={selectedDepartment}
               onChange={(event) => {
                 setSelectedDepartment(event.target.value);
-
                 setSelectedDoctor("");
-
                 setError("");
                 setMessage("");
               }}
+              required
             >
               <option value="">Select Department</option>
 
-              {departments.map((department) => (
-                <option key={department.id} value={department.id}>
-                  {department.name}
+              {departments.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
                 </option>
               ))}
             </select>
 
-            <label>Select Doctor</label>
+            <label htmlFor="doctor">Select Doctor</label>
 
             <select
+              id="doctor"
               value={selectedDoctor}
               onChange={(event) => setSelectedDoctor(event.target.value)}
               disabled={!selectedDepartment}
+              required
             >
               <option value="">Select Doctor</option>
 
-              {filteredDoctors.map((doctor) => (
-                <option key={doctor.id} value={doctor.id}>
-                  {doctor.name ||
-                    doctor.full_name ||
-                    doctor.doctor_name ||
-                    `Doctor ${doctor.id}`}
+              {filteredDoctors.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name ||
+                    item.full_name ||
+                    item.doctor_name ||
+                    `Doctor ${item.id}`}
                 </option>
               ))}
             </select>
 
-            {selectedDepartment && filteredDoctors.length > 0 && (
-              <p
-                style={{
-                  color: "#16a34a",
-                  marginTop: "5px",
-                  fontWeight: "600",
-                }}
-              >
-                {filteredDoctors.length} doctor(s) available
+            {selectedDepartment && (
+              <p>
+                {filteredDoctors.length > 0
+                  ? `${filteredDoctors.length} doctor(s) available`
+                  : "No doctors available for this department."}
               </p>
             )}
 
-            {selectedDepartment && filteredDoctors.length === 0 && (
-              <p
-                style={{
-                  color: "red",
-                  marginTop: "5px",
-                }}
-              >
-                No doctors available for this department.
-              </p>
-            )}
-
-            <label>Appointment Date</label>
+            <label htmlFor="appointment-date">Appointment Date</label>
 
             <input
+              id="appointment-date"
               type="date"
               value={appointmentDate}
               min={new Date().toISOString().split("T")[0]}
               onChange={(event) => setAppointmentDate(event.target.value)}
+              required
             />
 
-            <label>Reason for Visit</label>
+            <label htmlFor="appointment-reason">Reason for Visit</label>
 
             <textarea
+              id="appointment-reason"
               placeholder="Enter your symptoms or reason for visit"
               value={reason}
               onChange={(event) => setReason(event.target.value)}
-              rows="4"
+              rows={4}
+              required
             />
 
-            {error && <div className="error-message">❌ {error}</div>}
-
-            {message && <div className="success-message">{message}</div>}
-
-            <button type="submit" className="book-button" disabled={booking}>
+            <button
+              className="book-button"
+              type="submit"
+              disabled={booking}
+            >
               {booking ? "Booking..." : "📅 Book Appointment"}
             </button>
           </form>
-        </div>
+        </section>
 
         {/* MY QUEUE */}
 
-        <div className="dashboard-card">
+        <section className="dashboard-card">
           <h2>🎫 My Queue</h2>
 
           {queue ? (
@@ -1221,260 +902,168 @@ function PatientDashboard() {
               <div className="queue-details">
                 <div>
                   <span>Queue Token</span>
-
-                  <strong>{queue.token_number}</strong>
+                  <strong>{queue.token_number ?? "Not available"}</strong>
                 </div>
 
                 <div>
                   <span>Appointment ID</span>
-
-                  <strong>{queue.appointment_id}</strong>
+                  <strong>{queue.appointment_id ?? "Not available"}</strong>
                 </div>
 
                 <div>
                   <span>Doctor</span>
-
                   <strong>{getDoctorName(queue.doctor_id)}</strong>
                 </div>
 
                 <div>
                   <span>Queue Date</span>
-
                   <strong>
-                    {queue.queue_date
-                      ? queue.queue_date.split("T")[0]
-                      : "Not available"}
+                    {queue.queue_date?.split("T")[0] || "Not available"}
                   </strong>
                 </div>
 
                 <div>
                   <span>Patients Ahead</span>
-
                   <strong>{queue.patients_ahead ?? 0}</strong>
                 </div>
 
                 <div>
-                  <span>AI Estimated Wait</span>
-
-                  <strong>{queue.estimated_waiting_time ?? 0} minutes</strong>
+                  <span>Estimated Wait</span>
+                  <strong>
+                    {queue.estimated_waiting_time ?? 0} minutes
+                  </strong>
                 </div>
               </div>
 
-              <div
-                className="dashboard-status"
-                style={{
-                  marginTop: "20px",
-                  textAlign: "center",
-                  fontWeight: "bold",
-                  textTransform: "uppercase",
-                }}
-              >
+              <p className="dashboard-status">
                 {queue.status || "waiting"}
-              </div>
+              </p>
 
               {queue.status === "waiting" && (
-                <p
-                  style={{
-                    marginTop: "15px",
-                    textAlign: "center",
-                  }}
-                >
-                  ⏳ Please wait for your turn.
-                </p>
+                <p>⏳ Please wait for your turn.</p>
               )}
 
               {queue.status === "serving" && (
-                <p
-                  style={{
-                    marginTop: "15px",
-                    textAlign: "center",
-                    color: "#16a34a",
-                    fontWeight: "bold",
-                  }}
-                >
-                  🟢 It is your turn. Please proceed to the doctor.
-                </p>
+                <p>🟢 It is your turn. Please proceed to the doctor.</p>
               )}
 
               {queue.status === "completed" && (
-                <p
-                  style={{
-                    marginTop: "15px",
-                    textAlign: "center",
-                  }}
-                >
-                  ✅ Your consultation has been completed.
-                </p>
+                <p>✅ Your consultation has been completed.</p>
               )}
 
               {queue.status === "cancelled" && (
-                <p
-                  style={{
-                    marginTop: "15px",
-                    textAlign: "center",
-                    color: "red",
-                  }}
-                >
-                  ❌ Your queue token has been cancelled.
-                </p>
+                <p>❌ Your queue token has been cancelled.</p>
               )}
             </>
           ) : (
-            <p>No active queue found.</p>
+            <p>No queue found for appointments at this hospital.</p>
           )}
-        </div>
+        </section>
 
         {/* MY APPOINTMENTS */}
 
-        <div className="dashboard-card">
+        <section className="dashboard-card">
           <h2>📋 My Appointments</h2>
 
           {appointments.length === 0 ? (
-            <p>No appointments found.</p>
+            <p>No appointments found for this hospital.</p>
           ) : (
             <div className="appointments-list">
-              {appointments.map((appointment) => (
-                <div className="appointment-item" key={appointment.id}>
-                  <h3>Appointment {appointment.id}</h3>
+              {appointments.map((item) => (
+                <div className="appointment-item" key={item.id}>
+                  <h3>Appointment {item.id}</h3>
 
                   <p>
                     <strong>Department:</strong>{" "}
-                    {getDepartmentName(appointment.department_id)}
+                    {getDepartmentName(item.department_id)}
                   </p>
 
                   <p>
                     <strong>Doctor:</strong>{" "}
-                    {getDoctorName(appointment.doctor_id)}
+                    {getDoctorName(item.doctor_id)}
                   </p>
 
                   <p>
                     <strong>Date:</strong>{" "}
-                    {appointment.appointment_date
-                      ? appointment.appointment_date.split("T")[0]
-                      : "Not available"}
+                    {item.appointment_date?.split("T")[0] ||
+                      "Not available"}
                   </p>
 
                   <p>
-                    <strong>Reason:</strong> {appointment.reason}
+                    <strong>Reason:</strong> {item.reason || "Not available"}
                   </p>
 
                   <span className="appointment-status">
-                    {appointment.status}
+                    {item.status || "Not available"}
                   </span>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </section>
 
         {/* NOTIFICATIONS */}
 
         {showNotifications && (
-          <div className="dashboard-card">
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "20px",
-              }}
-            >
-              <h2>🔔 My Notifications</h2>
-
-              <button
-                type="button"
-                onClick={() => setShowNotifications(false)}
-                style={{
-                  padding: "8px 15px",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  background: "#6b7280",
-                  color: "white",
-                }}
-              >
-                Close
-              </button>
-            </div>
+          <section className="dashboard-card">
+            <PanelHeader
+              title="🔔 My Notifications"
+              onClose={() => setShowNotifications(false)}
+            />
 
             {notificationLoading && <p>Loading notifications...</p>}
 
             {notificationError && (
-              <div className="error-message">❌ {notificationError}</div>
+              <p className="error-message">{notificationError}</p>
             )}
 
             {!notificationLoading &&
               !notificationError &&
-              notifications.length === 0 && <p>No notifications available.</p>}
+              notifications.length === 0 && (
+                <p>No notifications available.</p>
+              )}
 
             {!notificationLoading &&
-              !notificationError &&
-              notifications.length > 0 && (
-                <div className="appointments-list">
-                  {notifications.map((notification) => (
-                    <div
-                      className="appointment-item"
-                      key={notification.id}
-                      style={{
-                        borderLeft: notification.is_read
-                          ? "4px solid #9ca3af"
-                          : "4px solid #2563eb",
-                      }}
+              notifications.map((item) => (
+                <div className="appointment-item" key={item.id}>
+                  <h3>
+                    {item.is_read ? "📩" : "🔵"} {item.title}
+                  </h3>
+
+                  <p>
+                    <strong>Message:</strong> {item.message}
+                  </p>
+
+                  <p>
+                    <strong>Type:</strong>{" "}
+                    {item.notification_type || "General"}
+                  </p>
+
+                  <p>
+                    <strong>Date:</strong>{" "}
+                    {item.created_at?.split("T")[0] || "Not available"}
+                  </p>
+
+                  <span className="appointment-status">
+                    {item.is_read ? "READ" : "UNREAD"}
+                  </span>
+
+                  {!item.is_read && (
+                    <button
+                      type="button"
+                      onClick={() => markNotificationAsRead(item.id)}
                     >
-                      <h3>
-                        {notification.is_read ? "📩" : "🔵"}{" "}
-                        {notification.title}
-                      </h3>
-
-                      <p>
-                        <strong>Message:</strong> {notification.message}
-                      </p>
-
-                      <p>
-                        <strong>Type:</strong>{" "}
-                        {notification.notification_type || "General"}
-                      </p>
-
-                      <p>
-                        <strong>Date:</strong>{" "}
-                        {notification.created_at
-                          ? notification.created_at.split("T")[0]
-                          : "Not available"}
-                      </p>
-
-                      <span className="appointment-status">
-                        {notification.is_read ? "READ" : "UNREAD"}
-                      </span>
-
-                      {!notification.is_read && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            markNotificationAsRead(notification.id)
-                          }
-                          style={{
-                            marginTop: "10px",
-                            padding: "8px 14px",
-                            border: "none",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                            background: "#16a34a",
-                            color: "white",
-                          }}
-                        >
-                          Mark as Read
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                      Mark as Read
+                    </button>
+                  )}
                 </div>
-              )}
-          </div>
+              ))}
+          </section>
         )}
 
         {/* MEDICAL INFORMATION */}
 
-        <div className="dashboard-card">
+        <section className="dashboard-card">
           <h2>🩺 Medical Information</h2>
 
           <div className="medical-grid">
@@ -1498,42 +1087,21 @@ function PatientDashboard() {
               📋 Medical History
             </button>
           </div>
-        </div>
+        </section>
 
         {/* MEDICAL HISTORY */}
 
         {showMedicalHistory && (
-          <div className="dashboard-card">
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "20px",
-              }}
-            >
-              <h2>📋 My Medical History</h2>
-
-              <button
-                type="button"
-                onClick={() => setShowMedicalHistory(false)}
-                style={{
-                  padding: "8px 15px",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  background: "#6b7280",
-                  color: "white",
-                }}
-              >
-                Close
-              </button>
-            </div>
+          <section className="dashboard-card">
+            <PanelHeader
+              title="📋 My Medical History"
+              onClose={() => setShowMedicalHistory(false)}
+            />
 
             {medicalHistoryLoading && <p>Loading medical history...</p>}
 
             {medicalHistoryError && (
-              <div className="error-message">❌ {medicalHistoryError}</div>
+              <p className="error-message">{medicalHistoryError}</p>
             )}
 
             {!medicalHistoryLoading &&
@@ -1545,227 +1113,125 @@ function PatientDashboard() {
             {!medicalHistoryLoading &&
               !medicalHistoryError &&
               medicalHistory.length > 0 && (
-                <div
-                  style={{
-                    overflowX: "auto",
-                  }}
-                >
+                <div style={{ overflowX: "auto" }}>
                   <table
                     style={{
                       width: "100%",
                       borderCollapse: "collapse",
-                      marginTop: "10px",
+                      marginTop: 10,
                     }}
                   >
                     <thead>
                       <tr>
-                        <th
-                          style={{
-                            padding: "12px",
-                            border: "1px solid #ddd",
-                            textAlign: "left",
-                          }}
-                        >
-                          Date
-                        </th>
-
-                        <th
-                          style={{
-                            padding: "12px",
-                            border: "1px solid #ddd",
-                            textAlign: "left",
-                          }}
-                        >
-                          Doctor
-                        </th>
-
-                        <th
-                          style={{
-                            padding: "12px",
-                            border: "1px solid #ddd",
-                            textAlign: "left",
-                          }}
-                        >
-                          Consultation
-                        </th>
-
-                        <th
-                          style={{
-                            padding: "12px",
-                            border: "1px solid #ddd",
-                            textAlign: "left",
-                          }}
-                        >
-                          Prescription
-                        </th>
-
-                        <th
-                          style={{
-                            padding: "12px",
-                            border: "1px solid #ddd",
-                            textAlign: "left",
-                          }}
-                        >
-                          Vitals
-                        </th>
-
-                        <th
-                          style={{
-                            padding: "12px",
-                            border: "1px solid #ddd",
-                            textAlign: "left",
-                          }}
-                        >
-                          Lab Report
-                        </th>
+                        {[
+                          "Date",
+                          "Doctor",
+                          "Consultation",
+                          "Prescription",
+                          "Vitals",
+                          "Lab Report",
+                        ].map((label) => (
+                          <th key={label} style={cellStyle}>
+                            {label}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
 
                     <tbody>
-                      {medicalHistory.map((history, index) => (
-                        <tr key={`${history.date}-${index}`}>
-                          <td
-                            style={{
-                              padding: "12px",
-                              border: "1px solid #ddd",
-                              verticalAlign: "top",
-                            }}
-                          >
-                            <strong>{history.date}</strong>
+                      {medicalHistory.map((item, index) => (
+                        <tr key={`${item.date}-${index}`}>
+                          <td style={cellStyle}>{item.date}</td>
+
+                          <td style={cellStyle}>
+                            {getHistoryDoctors(item.doctorIds)}
                           </td>
 
-                          <td
-                            style={{
-                              padding: "12px",
-                              border: "1px solid #ddd",
-                              verticalAlign: "top",
-                            }}
-                          >
-                            {getHistoryDoctors(history.doctorIds)}
+                          <td style={cellStyle}>
+                            {item.consultations.length > 0
+                              ? item.consultations.map((record) => (
+                                  <div key={record.id}>
+                                    <p>
+                                      Diagnosis:{" "}
+                                      {record.diagnosis || "Not available"}
+                                    </p>
+                                    <p>
+                                      Symptoms:{" "}
+                                      {record.symptoms || "Not available"}
+                                    </p>
+                                  </div>
+                                ))
+                              : "Not available"}
                           </td>
 
-                          <td
-                            style={{
-                              padding: "12px",
-                              border: "1px solid #ddd",
-                              verticalAlign: "top",
-                            }}
-                          >
-                            {history.consultations.length > 0 ? (
-                              history.consultations.map((consultation) => (
-                                <div
-                                  key={consultation.id}
-                                  style={{
-                                    marginBottom: "8px",
-                                  }}
-                                >
-                                  <strong>Completed</strong>
-                                  <br />
-                                  Diagnosis:{" "}
-                                  {consultation.diagnosis || "Not available"}
-                                  <br />
-                                  Symptoms:{" "}
-                                  {consultation.symptoms || "Not available"}
-                                </div>
-                              ))
-                            ) : (
-                              <span>Not available</span>
-                            )}
+                          <td style={cellStyle}>
+                            {item.prescriptions.length > 0
+                              ? item.prescriptions.map((record) => (
+                                  <div key={record.id}>
+                                    <p>
+                                      <strong>
+                                        {record.medicine_name || "Medicine"}
+                                      </strong>
+                                    </p>
+                                    <p>
+                                      Dosage: {record.dosage || "N/A"}
+                                    </p>
+                                    <p>
+                                      Frequency: {record.frequency || "N/A"}
+                                    </p>
+                                    <p>
+                                      Duration: {record.duration || "N/A"}
+                                    </p>
+                                  </div>
+                                ))
+                              : "Not available"}
                           </td>
 
-                          <td
-                            style={{
-                              padding: "12px",
-                              border: "1px solid #ddd",
-                              verticalAlign: "top",
-                            }}
-                          >
-                            {history.prescriptions.length > 0 ? (
-                              history.prescriptions.map((prescription) => (
-                                <div
-                                  key={prescription.id}
-                                  style={{
-                                    marginBottom: "8px",
-                                  }}
-                                >
-                                  <strong>{prescription.medicine_name}</strong>
-                                  <br />
-                                  Dosage:{" "}
-                                  {prescription.dosage || "Not available"}
-                                  <br />
-                                  Frequency:{" "}
-                                  {prescription.frequency || "Not available"}
-                                  <br />
-                                  Duration:{" "}
-                                  {prescription.duration || "Not available"}
-                                </div>
-                              ))
-                            ) : (
-                              <span>Not available</span>
-                            )}
+                          <td style={cellStyle}>
+                            {item.vitals.length > 0
+                              ? item.vitals.map((record) => (
+                                  <div key={record.id}>
+                                    <p>
+                                      Temperature:{" "}
+                                      {record.temperature ?? "N/A"} °F
+                                    </p>
+                                    <p>
+                                      Blood Pressure:{" "}
+                                      {record.blood_pressure || "N/A"}
+                                    </p>
+                                    <p>
+                                      Heart Rate:{" "}
+                                      {record.heart_rate ?? "N/A"} bpm
+                                    </p>
+                                    <p>
+                                      Oxygen: {record.oxygen_level ?? "N/A"}%
+                                    </p>
+                                  </div>
+                                ))
+                              : "Not available"}
                           </td>
 
-                          <td
-                            style={{
-                              padding: "12px",
-                              border: "1px solid #ddd",
-                              verticalAlign: "top",
-                            }}
-                          >
-                            {history.vitals.length > 0 ? (
-                              history.vitals.map((vital) => (
-                                <div
-                                  key={vital.id}
-                                  style={{
-                                    marginBottom: "8px",
-                                  }}
-                                >
-                                  Temperature: {vital.temperature ?? "N/A"} °F
-                                  <br />
-                                  Blood Pressure:{" "}
-                                  {vital.blood_pressure || "N/A"}
-                                  <br />
-                                  Heart Rate: {vital.heart_rate ?? "N/A"} bpm
-                                  <br />
-                                  Oxygen: {vital.oxygen_level ?? "N/A"}%
-                                </div>
-                              ))
-                            ) : (
-                              <span>Not available</span>
-                            )}
-                          </td>
-
-                          <td
-                            style={{
-                              padding: "12px",
-                              border: "1px solid #ddd",
-                              verticalAlign: "top",
-                            }}
-                          >
-                            {history.labReports.length > 0 ? (
-                              history.labReports.map((report) => (
-                                <div
-                                  key={report.id}
-                                  style={{
-                                    marginBottom: "8px",
-                                  }}
-                                >
-                                  <strong>
-                                    {getLabTestName(report.lab_test_id)}
-                                  </strong>
-                                  <br />
-                                  Result: {report.result || "Not available"}
-                                  <br />
-                                  Value:{" "}
-                                  {report.result_value || "Not available"}
-                                  <br />
-                                  Status:{" "}
-                                  {report.report_status || "Not available"}
-                                </div>
-                              ))
-                            ) : (
-                              <span>Not available</span>
-                            )}
+                          <td style={cellStyle}>
+                            {item.labReports.length > 0
+                              ? item.labReports.map((record) => (
+                                  <div key={record.id}>
+                                    <p>
+                                      <strong>
+                                        {getLabTestName(record.lab_test_id)}
+                                      </strong>
+                                    </p>
+                                    <p>
+                                      Result: {record.result || "N/A"}
+                                    </p>
+                                    <p>
+                                      Value: {record.result_value || "N/A"}
+                                    </p>
+                                    <p>
+                                      Status: {record.report_status || "N/A"}
+                                    </p>
+                                  </div>
+                                ))
+                              : "Not available"}
                           </td>
                         </tr>
                       ))}
@@ -1773,43 +1239,22 @@ function PatientDashboard() {
                   </table>
                 </div>
               )}
-          </div>
+          </section>
         )}
 
         {/* CONSULTATIONS */}
 
         {showConsultations && (
-          <div className="dashboard-card">
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "20px",
-              }}
-            >
-              <h2>🩺 My Consultations</h2>
-
-              <button
-                type="button"
-                onClick={() => setShowConsultations(false)}
-                style={{
-                  padding: "8px 15px",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  background: "#6b7280",
-                  color: "white",
-                }}
-              >
-                Close
-              </button>
-            </div>
+          <section className="dashboard-card">
+            <PanelHeader
+              title="🩺 My Consultations"
+              onClose={() => setShowConsultations(false)}
+            />
 
             {consultationLoading && <p>Loading consultations...</p>}
 
             {consultationError && (
-              <div className="error-message">❌ {consultationError}</div>
+              <p className="error-message">{consultationError}</p>
             )}
 
             {!consultationLoading &&
@@ -1819,85 +1264,37 @@ function PatientDashboard() {
               )}
 
             {!consultationLoading &&
-              !consultationError &&
-              consultations.length > 0 && (
-                <div className="appointments-list">
-                  {consultations.map((consultation) => (
-                    <div className="appointment-item" key={consultation.id}>
-                      <h3>Consultation {consultation.id}</h3>
-
-                      <p>
-                        <strong>Doctor:</strong>{" "}
-                        {getDoctorName(consultation.doctor_id)}
-                      </p>
-
-                      <p>
-                        <strong>Appointment ID:</strong>{" "}
-                        {consultation.appointment_id}
-                      </p>
-
-                      <p>
-                        <strong>Symptoms:</strong>{" "}
-                        {consultation.symptoms || "Not available"}
-                      </p>
-
-                      <p>
-                        <strong>Diagnosis:</strong>{" "}
-                        {consultation.diagnosis || "Not available"}
-                      </p>
-
-                      <p>
-                        <strong>Notes:</strong>{" "}
-                        {consultation.notes || "Not available"}
-                      </p>
-
-                      <p>
-                        <strong>Consultation Date:</strong>{" "}
-                        {consultation.consultation_date
-                          ? consultation.consultation_date.split("T")[0]
-                          : "Not available"}
-                      </p>
-                    </div>
-                  ))}
+              consultations.map((item) => (
+                <div className="appointment-item" key={item.id}>
+                  <h3>Consultation {item.id}</h3>
+                  <p>Doctor: {getDoctorName(item.doctor_id)}</p>
+                  <p>Appointment ID: {item.appointment_id}</p>
+                  <p>Symptoms: {item.symptoms || "Not available"}</p>
+                  <p>Diagnosis: {item.diagnosis || "Not available"}</p>
+                  <p>Notes: {item.notes || "Not available"}</p>
+                  <p>
+                    Consultation Date:{" "}
+                    {item.consultation_date?.split("T")[0] ||
+                      "Not available"}
+                  </p>
                 </div>
-              )}
-          </div>
+              ))}
+          </section>
         )}
 
         {/* PRESCRIPTIONS */}
 
         {showPrescriptions && (
-          <div className="dashboard-card">
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "20px",
-              }}
-            >
-              <h2>💊 My Prescriptions</h2>
-
-              <button
-                type="button"
-                onClick={() => setShowPrescriptions(false)}
-                style={{
-                  padding: "8px 15px",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  background: "#6b7280",
-                  color: "white",
-                }}
-              >
-                Close
-              </button>
-            </div>
+          <section className="dashboard-card">
+            <PanelHeader
+              title="💊 My Prescriptions"
+              onClose={() => setShowPrescriptions(false)}
+            />
 
             {prescriptionLoading && <p>Loading prescriptions...</p>}
 
             {prescriptionError && (
-              <div className="error-message">❌ {prescriptionError}</div>
+              <p className="error-message">{prescriptionError}</p>
             )}
 
             {!prescriptionLoading &&
@@ -1907,227 +1304,135 @@ function PatientDashboard() {
               )}
 
             {!prescriptionLoading &&
-              !prescriptionError &&
-              prescriptions.length > 0 && (
-                <div className="appointments-list">
-                  {prescriptions.map((prescription) => (
-                    <div className="appointment-item" key={prescription.id}>
-                      <h3>Prescription {prescription.id}</h3>
-
-                      <p>
-                        <strong>Doctor:</strong>{" "}
-                        {getDoctorName(prescription.doctor_id)}
-                      </p>
-
-                      <p>
-                        <strong>Consultation ID:</strong>{" "}
-                        {prescription.consultation_id}
-                      </p>
-
-                      <p>
-                        <strong>Medicine:</strong>{" "}
-                        {prescription.medicine_name || "Not available"}
-                      </p>
-
-                      <p>
-                        <strong>Dosage:</strong>{" "}
-                        {prescription.dosage || "Not available"}
-                      </p>
-
-                      <p>
-                        <strong>Frequency:</strong>{" "}
-                        {prescription.frequency || "Not available"}
-                      </p>
-
-                      <p>
-                        <strong>Duration:</strong>{" "}
-                        {prescription.duration || "Not available"}
-                      </p>
-
-                      <p>
-                        <strong>Instructions:</strong>{" "}
-                        {prescription.instructions || "Not available"}
-                      </p>
-
-                      <p>
-                        <strong>Prescribed Date:</strong>{" "}
-                        {prescription.prescribed_at
-                          ? prescription.prescribed_at.split("T")[0]
-                          : "Not available"}
-                      </p>
-                    </div>
-                  ))}
+              prescriptions.map((item) => (
+                <div className="appointment-item" key={item.id}>
+                  <h3>Prescription {item.id}</h3>
+                  <p>Doctor: {getDoctorName(item.doctor_id)}</p>
+                  <p>Consultation ID: {item.consultation_id}</p>
+                  <p>Medicine: {item.medicine_name || "Not available"}</p>
+                  <p>Dosage: {item.dosage || "Not available"}</p>
+                  <p>Frequency: {item.frequency || "Not available"}</p>
+                  <p>Duration: {item.duration || "Not available"}</p>
+                  <p>Instructions: {item.instructions || "Not available"}</p>
+                  <p>
+                    Prescribed Date:{" "}
+                    {item.prescribed_at?.split("T")[0] || "Not available"}
+                  </p>
                 </div>
-              )}
-          </div>
+              ))}
+          </section>
         )}
 
         {/* VITALS */}
 
         {showVitals && (
-          <div className="dashboard-card">
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "20px",
-              }}
-            >
-              <h2>❤️ My Vitals</h2>
-
-              <button
-                type="button"
-                onClick={() => setShowVitals(false)}
-                style={{
-                  padding: "8px 15px",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  background: "#6b7280",
-                  color: "white",
-                }}
-              >
-                Close
-              </button>
-            </div>
+          <section className="dashboard-card">
+            <PanelHeader
+              title="❤️ My Vitals"
+              onClose={() => setShowVitals(false)}
+            />
 
             {vitalsLoading && <p>Loading vitals...</p>}
 
             {vitalsError && (
-              <div className="error-message">❌ {vitalsError}</div>
+              <p className="error-message">{vitalsError}</p>
             )}
 
             {!vitalsLoading && !vitalsError && vitals.length === 0 && (
               <p>No vitals available.</p>
             )}
 
-            {!vitalsLoading && !vitalsError && vitals.length > 0 && (
-              <div className="appointments-list">
-                {vitals.map((vital, index) => (
-                  <div className="appointment-item" key={vital.id}>
-                    <h3>
-                      {index === 0
-                        ? "Latest Vitals"
-                        : `Vital Record ${vital.id}`}
-                    </h3>
-
-                    <p>
-                      <strong>Temperature:</strong>{" "}
-                      {vital.temperature ?? "Not available"} °F
-                    </p>
-
-                    <p>
-                      <strong>Blood Pressure:</strong>{" "}
-                      {vital.blood_pressure || "Not available"}
-                    </p>
-
-                    <p>
-                      <strong>Heart Rate:</strong>{" "}
-                      {vital.heart_rate ?? "Not available"} bpm
-                    </p>
-
-                    <p>
-                      <strong>Oxygen Level:</strong>{" "}
-                      {vital.oxygen_level ?? "Not available"}%
-                    </p>
-
-                    <p>
-                      <strong>Recorded Date:</strong>{" "}
-                      {vital.recorded_at
-                        ? vital.recorded_at.split("T")[0]
-                        : "Not available"}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+            {!vitalsLoading &&
+              vitals.map((item, index) => (
+                <div className="appointment-item" key={item.id}>
+                  <h3>
+                    {index === 0 ? "Latest Vitals" : `Vital Record ${item.id}`}
+                  </h3>
+                  <p>
+                    Temperature: {item.temperature ?? "Not available"} °F
+                  </p>
+                  <p>
+                    Blood Pressure: {item.blood_pressure || "Not available"}
+                  </p>
+                  <p>
+                    Heart Rate: {item.heart_rate ?? "Not available"} bpm
+                  </p>
+                  <p>
+                    Oxygen Level: {item.oxygen_level ?? "Not available"}%
+                  </p>
+                  <p>
+                    Recorded Date:{" "}
+                    {item.recorded_at?.split("T")[0] || "Not available"}
+                  </p>
+                </div>
+              ))}
+          </section>
         )}
 
         {/* LAB REPORTS */}
 
         {showLabReports && (
-          <div className="dashboard-card">
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "20px",
-              }}
-            >
-              <h2>🧪 My Lab Reports</h2>
-
-              <button
-                type="button"
-                onClick={() => setShowLabReports(false)}
-                style={{
-                  padding: "8px 15px",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  background: "#6b7280",
-                  color: "white",
-                }}
-              >
-                Close
-              </button>
-            </div>
+          <section className="dashboard-card">
+            <PanelHeader
+              title="🧪 My Lab Reports"
+              onClose={() => setShowLabReports(false)}
+            />
 
             {labLoading && <p>Loading lab reports...</p>}
 
-            {labError && <div className="error-message">❌ {labError}</div>}
+            {labError && <p className="error-message">{labError}</p>}
 
             {!labLoading && !labError && labReports.length === 0 && (
               <p>No lab reports available.</p>
             )}
 
-            {!labLoading && !labError && labReports.length > 0 && (
-              <div className="appointments-list">
-                {labReports.map((report) => (
-                  <div className="appointment-item" key={report.id}>
-                    <h3>Lab Report {report.id}</h3>
-
-                    <p>
-                      <strong>Test:</strong>{" "}
-                      {getLabTestName(report.lab_test_id)}
-                    </p>
-
-                    <p>
-                      <strong>Result:</strong>{" "}
-                      {report.result || "Not available"}
-                    </p>
-
-                    <p>
-                      <strong>Result Value:</strong>{" "}
-                      {report.result_value || "Not available"}
-                    </p>
-
-                    <p>
-                      <strong>Normal Range:</strong>{" "}
-                      {report.normal_range || "Not available"}
-                    </p>
-
-                    <p>
-                      <strong>Report Date:</strong>{" "}
-                      {report.report_date
-                        ? report.report_date.split("T")[0]
-                        : "Not available"}
-                    </p>
-
-                    <span className="appointment-status">
-                      {report.report_status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+            {!labLoading &&
+              labReports.map((item) => (
+                <div className="appointment-item" key={item.id}>
+                  <h3>Lab Report {item.id}</h3>
+                  <p>Test: {getLabTestName(item.lab_test_id)}</p>
+                  <p>Result: {item.result || "Not available"}</p>
+                  <p>Result Value: {item.result_value || "Not available"}</p>
+                  <p>Normal Range: {item.normal_range || "Not available"}</p>
+                  <p>
+                    Report Date:{" "}
+                    {item.report_date?.split("T")[0] || "Not available"}
+                  </p>
+                  <span className="appointment-status">
+                    {item.report_status || "Not available"}
+                  </span>
+                </div>
+              ))}
+          </section>
         )}
       </div>
     </div>
   );
 }
+
+function PanelHeader({ title, onClose }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 20,
+      }}
+    >
+      <h2>{title}</h2>
+      <button type="button" onClick={onClose}>
+        Close
+      </button>
+    </div>
+  );
+}
+
+const cellStyle = {
+  padding: 12,
+  border: "1px solid #ddd",
+  textAlign: "left",
+  verticalAlign: "top",
+};
 
 export default PatientDashboard;

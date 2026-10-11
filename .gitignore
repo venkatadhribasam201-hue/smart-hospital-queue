@@ -23,3 +23,7 @@ ml/__pycache__/
 # Operating system files
 .DS_Store
 Thumbs.db
+
+.env
+.env.*
+!.env.example

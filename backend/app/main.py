@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -22,6 +23,7 @@ from app.models.lab_test import LabTest
 from app.models.lab_report import LabReport
 from app.models.medicine import Medicine
 from app.models.notification import Notification
+from app.models.hospital import Hospital
 
 
 # =========================
@@ -42,6 +44,47 @@ from app.api.lab_report import router as lab_report_router
 from app.api.medicine import router as medicine_router
 from app.api.notification import router as notification_router
 from app.api.prediction import router as prediction_router
+from app.api.hospital import router as hospitals_router
+
+
+# =========================
+# FASTAPI APPLICATION
+# =========================
+
+app = FastAPI(
+    title="Smart Hospital Queue Management System",
+    description=(
+        "AI-Driven Smart Hospital Queue Management "
+        "and Waiting Time Prediction System"
+    ),
+    version="1.0.0",
+)
+
+
+# =========================
+# CORS CONFIGURATION
+# =========================
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        # Local development
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+
+        # Local network development
+        "http://10.157.76.151:5173",
+
+        # Development tunnel
+        "https://nw48n1b1-5173.inc1.devtunnels.ms",
+
+        # Existing deployed frontend
+        "https://smart-hospital-frontend-n63y.onrender.com",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # =========================
@@ -50,9 +93,14 @@ from app.api.prediction import router as prediction_router
 
 Base.metadata.create_all(bind=engine)
 
-from sqlalchemy import text
+
+# =========================
+# DATABASE COLUMN UPDATES
+# =========================
 
 with engine.begin() as connection:
+
+    # Add hospital_name column to doctors table if missing
     connection.execute(
         text(
             "ALTER TABLE doctors "
@@ -60,33 +108,13 @@ with engine.begin() as connection:
         )
     )
 
-# =========================
-# FASTAPI APPLICATION
-# =========================
-
-app = FastAPI(
-    title="Smart Hospital Queue Management System",
-    description="AI-Driven Smart Hospital Queue Management and Waiting Time Prediction System",
-    version="1.0.0"
-)
-
-
-# =========================
-# CORS
-# =========================
-from fastapi.middleware.cors import CORSMiddleware
-
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-    "http://localhost:5173",
-    "https://smart-hospital-frontend-n63y.onrender.com"
-],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    # Add image_url column to hospitals table if missing
+    connection.execute(
+        text(
+            "ALTER TABLE hospitals "
+            "ADD COLUMN IF NOT EXISTS image_url VARCHAR(500)"
+        )
+    )
 
 
 # =========================
@@ -107,6 +135,7 @@ app.include_router(lab_report_router)
 app.include_router(medicine_router)
 app.include_router(notification_router)
 app.include_router(prediction_router)
+app.include_router(hospitals_router)
 
 
 # =========================
@@ -117,7 +146,7 @@ app.include_router(prediction_router)
 def root():
     return {
         "message": "Smart Hospital API is running",
-        "status": "success"
+        "status": "success",
     }
 
 
@@ -127,21 +156,19 @@ def root():
 
 @app.get("/health")
 def health_check():
-
     try:
-
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
 
         return {
             "status": "healthy",
-            "database": "connected"
+            "database": "connected",
         }
 
-    except Exception as error:
+    except Exception as e:
+        print("HEALTH CHECK ERROR:", repr(e))
 
         return {
             "status": "unhealthy",
             "database": "connection failed",
-            "error": str(error)
         }

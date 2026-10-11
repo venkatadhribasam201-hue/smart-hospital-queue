@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import API_BASE_URL from "../api";
@@ -11,7 +12,6 @@ function Register() {
     phone: "",
     password: "",
     role: "patient",
-
     specialization: "",
     hospital_name: "",
     license_number: "",
@@ -39,28 +39,35 @@ function Register() {
 
     try {
       const payload = {
-        full_name: formData.full_name,
-        email: formData.email,
-        phone: formData.phone,
+        full_name: formData.full_name.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
         password: formData.password,
         role: formData.role,
       };
 
       if (formData.role === "doctor") {
-        payload.specialization = formData.specialization;
-        payload.hospital_name = formData.hospital_name;
-        payload.license_number = formData.license_number;
-        payload.experience_years = Number(formData.experience_years || 0);
-        payload.consultation_fee = Number(formData.consultation_fee || 0);
+        payload.specialization = formData.specialization.trim();
+        payload.hospital_name = formData.hospital_name.trim();
+        payload.license_number = formData.license_number.trim();
+        payload.experience_years = Number(
+          formData.experience_years || 0
+        );
+        payload.consultation_fee = Number(
+          formData.consultation_fee || 0
+        );
       }
 
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/auth/register`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
 
       const data = await response.json();
 
@@ -68,11 +75,15 @@ function Register() {
 
       if (!response.ok) {
         throw new Error(
-          typeof data.detail === "string" ? data.detail : "Registration failed",
+          typeof data.detail === "string"
+            ? data.detail
+            : "Registration failed"
         );
       }
 
-      setSuccess("Account created successfully! Redirecting to login...");
+      setSuccess(
+        "Account created successfully! Redirecting to login..."
+      );
 
       setTimeout(() => {
         navigate("/login");
@@ -80,7 +91,9 @@ function Register() {
     } catch (err) {
       console.error("Register error:", err);
 
-      setError(err.message || "Unable to connect to the server");
+      setError(
+        err.message || "Unable to connect to the server"
+      );
     } finally {
       setLoading(false);
     }
@@ -144,13 +157,14 @@ function Register() {
 
           <label>Select Role</label>
 
-          <select name="role" value={formData.role} onChange={handleChange}>
+          <select
+            name="role"
+            value={formData.role}
+            onChange={handleChange}
+          >
             <option value="patient">Patient</option>
-
             <option value="doctor">Doctor</option>
-
             <option value="nurse">Nurse</option>
-
             <option value="receptionist">Receptionist</option>
           </select>
 
@@ -214,17 +228,23 @@ function Register() {
             </>
           )}
 
-          {error && <p className="error-message">{error}</p>}
+          {error && (
+            <p className="error-message">{error}</p>
+          )}
 
-          {success && <p className="success-message">{success}</p>}
+          {success && (
+            <p className="success-message">{success}</p>
+          )}
 
           <button type="submit" disabled={loading}>
-            {loading ? "Creating Account..." : "Create Account"}
+            {loading
+              ? "Creating Account..."
+              : "Create Account"}
           </button>
         </form>
 
         <p className="auth-bottom">
-          Already have an account?
+          Already have an account?{" "}
           <Link to="/login">Login</Link>
         </p>
 
